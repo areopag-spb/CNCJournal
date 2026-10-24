@@ -220,7 +220,22 @@ public class PromptBuilder
     public static string RenderShiftReports(AnalyzeRequest req)
     {
         var sb = new StringBuilder();
-        AppendShiftReports(sb, req);
+        AppendShiftReports(sb, req, hiddenShifts: null);
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Блоки отчётов смен, решать по которым нечего (превердикт Clear), не рендерятся:
+    /// судить нечего — показывать нечего, иначе модель придирается к материалу,
+    /// который ей запрещено судить (кейсы Integrex 09/10.2026: флаг полного простоя
+    /// с причиной из списка). Остаётся только строка СИСТЕМА в скелете. Смены,
+    /// которых нет в hiddenShifts (нужен модели разбор, hard-нарушения), — как раньше.
+    /// Пустой итог (все скрыты): заголовок секции тоже не пишется.
+    /// </summary>
+    public static string RenderShiftReports(AnalyzeRequest req, IReadOnlySet<string> hiddenShifts)
+    {
+        var sb = new StringBuilder();
+        AppendShiftReports(sb, req, hiddenShifts);
         return sb.ToString();
     }
 
@@ -257,7 +272,8 @@ public class PromptBuilder
                 sb.AppendLine($" ⚠ {sig}");
         }
 
-        AppendShiftReports(sb, req);
+        AppendShiftReports(sb, req,
+            ShiftReportRuleEvaluator.ClearShiftKeys(ShiftReportRuleEvaluator.AgentPreverdicts(req, shiftRules)));
 
         sb.AppendLine();
 
@@ -522,15 +538,21 @@ public class PromptBuilder
     /// причина и комментарий — материал для семантической проверки релевантности (S1).
     /// Структурные нарушения модель не решает (см. hard-блок выше), ей нужны только факты.
     /// </summary>
-    private static void AppendShiftReports(StringBuilder sb, AnalyzeRequest req)
+    private static void AppendShiftReports(StringBuilder sb, AnalyzeRequest req, IReadOnlySet<string>? hiddenShifts = null)
     {
         if (req.ShiftReports.Count == 0) return;
 
         static string Safe(string s) => (s ?? "").Trim().Replace("\r", "").Replace("\n", " / ");
+        static string Key(ShiftReportContext r) => (r.Shift ?? "").Trim().ToLowerInvariant();
+
+        var visible = req.ShiftReports
+            .Where(r => hiddenShifts == null || !hiddenShifts.Contains(Key(r)))
+            .ToList();
+        if (visible.Count == 0) return;
 
         sb.AppendLine();
         sb.AppendLine("Отчёт мастера за смену:");
-        foreach (var r in req.ShiftReports)
+        foreach (var r in visible)
         {
             if (!r.ReportExists || r.ShiftMinutes <= 0)
             {

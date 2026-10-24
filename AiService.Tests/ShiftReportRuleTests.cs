@@ -752,6 +752,56 @@ public class ShiftReportRuleTests
     }
 
     [Fact]
+    public void DropCommentDemands_ConfirmationDemandWithComment_Dropped()
+    {
+        // Живой кейс L230A 10.10 (пятница): «не подтверждена комментарием»
+        // при НЕПУСТОМ комментарии — требовать нечего, режется.
+        var req = IdleNightRequest();
+        req.ShiftReports[0].FreshUnspecifiedDowntimes = 481;
+        req.ShiftReports[0].DowntimeReason = "Отсутствие оператора";
+        req.ShiftReports[0].MasterComment = "Goodway GLS-1500LS №322";
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropSelfSufficientCommentDemands(
+            req, ["Смена День: Причина «Отсутствие оператора» не подтверждена комментарием, указывающим на конкретное оборудование или ситуацию"]);
+
+        Assert.Empty(kept);
+        Assert.Single(dropped);
+    }
+
+    [Fact]
+    public void Preverdicts_FullDrugoeEmptyComment_NeedsModel()
+    {
+        // Carve-out 19.10.2026: «Другое» без детализации при простое целиком —
+        // R2 требует комментарий всегда, судить модели, а не закрывать.
+        var req = Request(Day(fresh: 660, reason: "Другое", comment: "", hasParts: false));
+        var pvs = ShiftReportRuleEvaluator.AgentPreverdicts(req, new ShiftReportRuleResult([], []));
+
+        var day = Assert.Single(pvs);
+        Assert.True(day.NeedsModel);
+    }
+
+    [Fact]
+    public void Preverdicts_FullDrugoeWithComment_Clear()
+    {
+        // Детализация есть — как раньше нечего судить.
+        var req = Request(Day(fresh: 660, reason: "Другое", comment: "порван ремень", hasParts: false));
+        var pvs = ShiftReportRuleEvaluator.AgentPreverdicts(req, new ShiftReportRuleResult([], []));
+
+        var day = Assert.Single(pvs);
+        Assert.False(day.NeedsModel);
+    }
+
+    [Fact]
+    public void Preverdicts_FullAbsence_Clear()
+    {
+        // Самодостаточная причина при простое целиком — Clear как раньше.
+        var req = Request(Day(fresh: 660, reason: "Отсутствие оператора", comment: "", hasParts: false));
+        var pvs = ShiftReportRuleEvaluator.AgentPreverdicts(req, new ShiftReportRuleResult([], []));
+
+        var day = Assert.Single(pvs);
+        Assert.False(day.NeedsModel);
+    }
+
+    [Fact]
     public void DropReasonDemands_BezUkazaniya_Dropped()
     {
         // «без указания причины» — та же жалоба на отсутствие, что «не указана».

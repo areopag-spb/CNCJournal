@@ -404,10 +404,12 @@ public class AgentLoopService(
             foreach (var s in hardRules.SoftSignals)
                 sb.AppendLine($" • SOFT: {s}");
         }
-        sb.Append(PromptBuilder.RenderShiftReports(request));
+        sb.Append(PromptBuilder.RenderShiftReports(request, ShiftReportRuleEvaluator.ClearShiftKeys(ShiftReportRuleEvaluator.AgentPreverdicts(request, shiftRules))));
         // Предрешение системы по отчётам: механику исключений модель нарушает
         // детерминированно (пилот 24.09.2026), поэтому код сообщает итог как факт.
         // Строки СИСТЕМА модель не перепроверяет; судит только ТВОЯ ПРОВЕРКА.
+        // Блоков Clear-смен в данных уже нет (скрыты выше — судить нечего
+        // и не по чему); shift_report_issues по ним пуст всегда, без исключений.
         sb.AppendLine("Проверка отчёта (предрешение системы):");
         foreach (var pv in ShiftReportRuleEvaluator.AgentPreverdicts(request, shiftRules))
             sb.AppendLine(pv.NeedsModel

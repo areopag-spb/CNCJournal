@@ -144,6 +144,15 @@ public static class ShiftReportRuleEvaluator
     /// </summary>
     public record ShiftPreverdict(string Shift, bool NeedsModel, string Note);
 
+    /// <summary>
+    /// Ключи смен, решать по которым нечего (превердикт Clear): их блоки отчётов
+    /// не рендерятся в промпт — судить нечего и не по чему (кейсы Integrex
+    /// 09/10.2026: модель флагала полный простой с причиной из списка вопреки
+    /// строке СИСТЕМА). Нормализация та же, что у byShift-словарей ниже.
+    /// </summary>
+    public static HashSet<string> ClearShiftKeys(List<ShiftPreverdict> preverdicts) =>
+        [.. preverdicts.Where(p => !p.NeedsModel).Select(p => p.Shift.Trim().ToLowerInvariant())];
+
     public static List<ShiftPreverdict> AgentPreverdicts(AnalyzeRequest req, ShiftReportRuleResult shiftRules)
     {
         var result = new List<ShiftPreverdict>();
@@ -176,11 +185,20 @@ public static class ShiftReportRuleEvaluator
 
             // Простой целиком + причина из списка + записей нет: такой причине
             // добавить нечего, пустой комментарий — норма (шаг 2 скелета).
+            // Исключение — «Другое» без детализации: R2 требует комментарий всегда,
+            // даже при простое целиком, поэтому судить модели, а не закрывать.
             if (rep.FreshUnspecifiedDowntimes >= rep.ShiftMinutes
                 && !string.IsNullOrWhiteSpace(reason)
                 && knownReasons.Contains(reason)
                 && !rep.HasParts)
             {
+                if (OtherReason.Equals(reason, StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(rep.MasterComment))
+                {
+                    result.Add(new ShiftPreverdict(rep.Shift, true,
+                        "«Другое» без детализации при простое целиком: комментарий обязателен всегда"));
+                    continue;
+                }
                 result.Add(Clear("простой целиком + причина из списка, записей нет"));
                 continue;
             }
