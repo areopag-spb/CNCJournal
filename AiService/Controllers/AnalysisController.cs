@@ -136,12 +136,15 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             (modelShiftIssues, var droppedUnscoped) =
                 ShiftReportRuleEvaluator.DropUnscopedShiftIssues(modelShiftIssues);
             MergeAutoExcludes(llmResult, mastering.AutoExcludes);
+            var consistencyConflict = CheckThinkingConsistency(request, agentTrace?.ThinkingExcerpt ?? thinkCapture.ToString(), llmResult);
             var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
                 hardRules.SoftSignals, llmResult.DowngradedSignals);
 
             var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
                 request, hardRules, notDowngraded, llmResult.Signals);
             llmResult.Signals = filteredSignals;
+            if (consistencyConflict)
+                llmResult.Signals.Add(ThinkingConsistency.ConflictSignal);
             removedSignals.AddRange(droppedRelevanceVerdicts
                 .Select(d => (d, "вердикт «релевантно» — одобрение, а не проблема")));
             removedSignals.AddRange(droppedKpdLink
@@ -171,12 +174,13 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             var emptyModelVerdict = !llmResult.HasError && llmResult.RequiresReview
                 && llmResult.Signals.Count == 0 && modelShiftIssues.Count == 0
                 && !hardRules.MustEscalate && !shiftRules.MustEscalate && notDowngraded.Count == 0
-                && request.Signals.Count == 0 && !request.Parts.Any(p => p.Signals.Count > 0);
+                && request.Signals.Count == 0 && !request.Parts.Any(p => p.Signals.Count > 0)
+                && !consistencyConflict;
             if (emptyModelVerdict)
                 logger.LogInformation(
                     "Пустой вердикт модели ({Machine} {Date}): requires_review без оснований — сброшен",
                     request.Machine, request.ShiftDate);
-            var resetEffective = (reset || emptyModelVerdict)
+            var resetEffective = (reset || emptyModelVerdict) && !consistencyConflict
                 && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
             if (resetEffective)
             {
@@ -747,7 +751,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             MergeAutoExcludes(llmResult, mastering.AutoExcludes);
             // В агентском пути thinking живёт в трассе (excerpt), а не в переменной —
             // без этого рассинхрон «в мыслях False, в JSON True» (флипы) не виден в логах.
-            CheckThinkingConsistency(request, agentTrace?.ThinkingExcerpt ?? thinking, llmResult);
+            var consistencyConflict = CheckThinkingConsistency(request, agentTrace?.ThinkingExcerpt ?? thinking, llmResult);
 
         logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}, ExcludeFromReports={ExcludeCount} [{ExcludeList}]",
             llmResult.RequiresReview, llmResult.Error ?? "(нет)",
@@ -759,6 +763,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         var (filteredSignals, reset, removedSignals) = FalsePositiveFilter.Apply(
             request, hardRules, notDowngraded, llmResult.Signals);
         llmResult.Signals = filteredSignals;
+            if (consistencyConflict)
+                llmResult.Signals.Add(ThinkingConsistency.ConflictSignal);
         removedSignals.AddRange(droppedRelevanceVerdicts
             .Select(d => (d, "вердикт «релевантно» — одобрение, а не проблема")));
         removedSignals.AddRange(droppedKpdLink
@@ -784,12 +790,13 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             var emptyModelVerdict = !llmResult.HasError && llmResult.RequiresReview
                 && llmResult.Signals.Count == 0 && modelShiftIssues.Count == 0
                 && !hardRules.MustEscalate && !shiftRules.MustEscalate && notDowngraded.Count == 0
-                && request.Signals.Count == 0 && !request.Parts.Any(p => p.Signals.Count > 0);
+                && request.Signals.Count == 0 && !request.Parts.Any(p => p.Signals.Count > 0)
+                && !consistencyConflict;
             if (emptyModelVerdict)
                 logger.LogInformation(
                     "Пустой вердикт модели ({Machine} {Date}): requires_review без оснований — сброшен",
                     request.Machine, request.ShiftDate);
-        var resetEffective = (reset || emptyModelVerdict) && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
+        var resetEffective = (reset || emptyModelVerdict) && !consistencyConflict && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
         if (resetEffective)
         {
             llmResult.RequiresReview = false;
@@ -931,40 +938,24 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     private static string RowKey(string excludeEntry) =>
         string.Join('§', excludeEntry.Split('§').Take(3));
 
-    // Маркеры вывода об эскалации в самом конце рассуждения (не в середине —
-    // там модель может гипотетически рассматривать «если бы это требовало
-    // эскалации»; итог обычно в последних предложениях).
-    private static readonly string[] EscalationConclusionMarkers =
-    [
-        "требует эскалац",
-        "требуется эскалац",
-        "необходима эскалация",
-        "это требует эскалации",
-    ];
-
     /// <summary>
-    /// Грубый детектор рассинхрона между рассуждением модели (&lt;think&gt;) и
-    /// финальным JSON: если в хвосте рассуждения модель заключает «требуется
-    /// эскалация», а requires_review в структурированном ответе всё равно false —
-    /// это НЕ баг FalsePositiveFilter (сигналов может вообще не быть, как в кейсе
-    /// 2026-06-30 Rontek HTC650M: response.signals=[] с самого начала, модель просто
-    /// не перенесла свой вывод в JSON), а самостоятельная нестабильность модели при
-    /// сжатии длинного рассуждения в короткий структурированный ответ. Только
-    /// логирование — эвристика по ключевым словам ненадёжна для авто-исправления.
+    /// Рассинхрон рассуждения и ответа (см. <see cref="ThinkingConsistency"/>): вердикт
+    /// поднимается в True, возвращает true, чтобы автосброс (пустой вердикт, пост-фильтр)
+    /// его не отменил. Рассуждение в агентском пути — только выдержка (ThinkingExcerptCap),
+    /// поэтому «хвост» приблизителен; лишняя эскалация здесь дешевле пропуска.
     /// </summary>
-    private void CheckThinkingConsistency(AnalyzeRequest request, string? thinking, AnalyzeResponse llmResult)
+    private bool CheckThinkingConsistency(AnalyzeRequest request, string? thinking, AnalyzeResponse llmResult)
     {
-        if (string.IsNullOrWhiteSpace(thinking) || llmResult.RequiresReview) return;
-
-        var tail = thinking[(thinking.Length * 2 / 3)..];
-        if (!EscalationConclusionMarkers.Any(m => tail.Contains(m, StringComparison.OrdinalIgnoreCase)))
-            return;
+        if (llmResult.RequiresReview || !ThinkingConsistency.HasEscalationConclusion(thinking))
+            return false;
 
         logger.LogWarning(
-            "Возможный рассинхрон рассуждения и ответа ({Machine} {Date}): " +
-            "requires_review=false в JSON, но в конце рассуждения модель писала об эскалации. " +
+            "Рассинхрон рассуждения и ответа ({Machine} {Date}): requires_review=false в JSON, " +
+            "но в конце рассуждения модель писала об эскалации — вердикт поднят в True. " +
             "Хвост рассуждения: {Tail}",
-            request.Machine, request.ShiftDate, tail[..Math.Min(400, tail.Length)]);
+            request.Machine, request.ShiftDate, ThinkingConsistency.Tail(thinking!));
+        llmResult.RequiresReview = true;
+        return true;
     }
 
     /// <summary>
