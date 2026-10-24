@@ -80,7 +80,8 @@ public class PromptBuilder
             var raw = File.ReadAllText(externalPath);
             var stripped = StripVersionLine(raw);
             entry.Content = stripped?.content ?? raw;
-            entry.Version = stripped?.version ?? writeTimeUtc.ToString("yyyy-MM-dd-HH:mm");
+            entry.Version = WithContentHash(
+                stripped?.version ?? writeTimeUtc.ToString("yyyy-MM-dd-HH:mm"), entry.Content);
             entry.WriteTimeUtc = writeTimeUtc;
             entry.Exists = true;
             _logger.LogInformation("Промпт '{FileName}' version {Version} загружен из файла: {Path}",
@@ -107,10 +108,38 @@ public class PromptBuilder
         var embeddedRaw = reader.ReadToEnd();
         var embeddedStripped = StripVersionLine(embeddedRaw);
         entry.Content = embeddedStripped?.content ?? embeddedRaw;
-        entry.Version = embeddedStripped?.version ?? "unknown";
+        entry.Version = embeddedStripped?.version is { } embeddedLabel
+            ? WithContentHash(embeddedLabel, entry.Content)
+            : "unknown";
         entry.Exists = true;
         _logger.LogInformation("Промпт '{FileName}' version {Version} загружен из embedded resource",
             fileName, entry.Version);
+    }
+
+    /// <summary>
+    /// Версия = ручная метка из «;; version:» + короткий хэш содержимого: правка
+    /// промпта без подъёма метки всё равно меняет версию. CRLF/LF нормализуются,
+    /// чтобы хэш репозитория и прода совпадал.
+    /// </summary>
+    public static string WithContentHash(string label, string content) =>
+        $"{label}+{ShortHash(content, 8)}";
+
+    public static string ShortHash(string content, int length)
+    {
+        var normalized = content.Replace("\r\n", "\n");
+        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
+        return Convert.ToHexString(bytes)[..length].ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Добавляет в версию хэш дополнительного блока промпта (soft-сигналы),
+    /// сохраняя суффикс профиля «@agent» в конце.
+    /// </summary>
+    public static string WithExtraBlock(string version, string blockContent)
+    {
+        var at = version.IndexOf('@');
+        var extra = $"+s{ShortHash(blockContent, 4)}";
+        return at < 0 ? version + extra : version[..at] + extra + version[at..];
     }
 
     private static (string content, string version)? StripVersionLine(string text)
@@ -253,6 +282,7 @@ public class PromptBuilder
             {
                 sb.AppendLine();
                 sb.AppendLine(softPrompt);
+                promptVersion = WithExtraBlock(promptVersion, softPrompt);
             }
         }
 
