@@ -1,0 +1,87 @@
+{
+ "group": "MISS",
+ "expectedDecision": "escalated",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": false,
+ "request": {
+  "machine": "Victor A110",
+  "shiftDate": "2026-06-27",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Шатун АР26.1-02-003",
+    "order": "УЧ2606-0035.2.1",
+    "setup": 2,
+    "setupRatio": null,
+    "productionRatio": 0.3086,
+    "finishedCount": 2,
+    "setupTimePlan": 80,
+    "setupTimeFact": 0,
+    "singleProductionTimePlan": 50,
+    "productionTimeFact": 324,
+    "partialSetup": 122,
+    "machiningTime": 80,
+    "downtimeRatio": 0.2943,
+    "operatorComment": "Отмеченные простои:\n[н] Обращение в другие службы: 211 мин\n └── 7:03 ─ 10:49\n[н] Частичная наладка: 122 мин",
+    "masterSetupComment": "Другое",
+    "masterMachiningComment": "Штучная/длительная работа",
+    "masterComment": "эскалация",
+    "masterSetupDetail": "",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": false,
+    "noManualOperatorComment": false,
+    "signals": [
+     "КПД частичной наладки 66% < 70% (план 80мин, факт 122мин)"
+    ],
+    "partsHistory": null,
+    "isSmallBatch": true
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 3,
+    "freshUnspecifiedDowntimes": 3,
+    "downtimeReason": "",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0.18484848484848485
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

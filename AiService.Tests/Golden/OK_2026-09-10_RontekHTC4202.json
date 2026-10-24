@@ -1,0 +1,85 @@
+{
+ "group": "OK",
+ "expectedDecision": "ok",
+ "loggedPromptVersion": "2026-09-25-agent-v21@agent",
+ "loggedRequiresReview": false,
+ "request": {
+  "machine": "Rontek HTC420 №2",
+  "shiftDate": "2026-09-10",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Шпилька А М24х160.25Х1МФ (35Х, 40Х).016 ГОСТ 10494-80 (производство) под покрытие (Ц6хр. S=13045мм2)",
+    "order": "УЧ2608-0083.2.1",
+    "setup": 3,
+    "setupRatio": null,
+    "productionRatio": 0.898,
+    "finishedCount": 44,
+    "setupTimePlan": 86,
+    "setupTimeFact": 0,
+    "singleProductionTimePlan": 5,
+    "productionTimeFact": 245,
+    "partialSetup": 0,
+    "machiningTime": 4,
+    "downtimeRatio": 0,
+    "operatorComment": "",
+    "masterSetupComment": "",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": true,
+    "noProductionHappened": false,
+    "noManualOperatorComment": true,
+    "signals": [],
+    "partsHistory": null,
+    "isSmallBatch": false
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 415,
+    "freshUnspecifiedDowntimes": 415,
+    "downtimeReason": "Другое",
+    "masterComment": "Работал на другом станке МЦ ЧПУ Токарный Rontek HTC 420 - 1 Шпилька А М24х160.25Х1МФ (35Х, 40Х).016 ГОСТ 10494-80 (производство) Стержень АРКП02-04-002",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

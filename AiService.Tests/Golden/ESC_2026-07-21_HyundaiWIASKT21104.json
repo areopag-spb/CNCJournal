@@ -1,0 +1,87 @@
+{
+ "group": "ESC",
+ "expectedDecision": "escalated",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": true,
+ "request": {
+  "machine": "Hyundai WIA SKT21 №104",
+  "shiftDate": "2026-07-21",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Коленвал АР921-02-022 под ТО (Ст40ХН HRC 37...42)",
+    "order": "УЧ2606-0118.3.1",
+    "setup": 2,
+    "setupRatio": 0.5342,
+    "productionRatio": 0.8261,
+    "finishedCount": 38,
+    "setupTimePlan": 86,
+    "setupTimeFact": 161,
+    "singleProductionTimePlan": 10,
+    "productionTimeFact": 460,
+    "partialSetup": 0,
+    "machiningTime": 10,
+    "downtimeRatio": 0.0476,
+    "operatorComment": "Ожидание нейтральной головы с 550, 1 инструмент на 2 станка,\r\n1шт брак , программа с архива ( неправильно был посчитан отрезной , вместо глубины 166,5 сделало 168),установка детали с наименьшим боем ,проверка в центрах каждой 5 детали .",
+    "masterSetupComment": "Другое",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "проверка в центрах каждой 5 детали ",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "Отмеченные простои:\n[н] Замена инструмента: 9 мин\n └── 7:19 ─ 7:28\n[и] Обращение в другие службы: 16 мин\n └── 10:05 ─ 10:21\n[и] Замена инструмента: 9 мин\n └── 15:32 ─ 15:41",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": false,
+    "noManualOperatorComment": false,
+    "signals": [
+     "Машинное время 10мин >= штучного норматива 10мин (100%)"
+    ],
+    "partsHistory": null,
+    "isSmallBatch": false
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 5,
+    "freshUnspecifiedDowntimes": 5,
+    "downtimeReason": "",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": false,
+  "promptProfile": null
+ }
+}

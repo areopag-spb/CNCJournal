@@ -1,0 +1,122 @@
+{
+ "group": "ESC",
+ "expectedDecision": "escalated",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": true,
+ "request": {
+  "machine": "Rontek VMC90C",
+  "shiftDate": "2026-07-04",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Колесо червячное АР49-02-001-02",
+    "order": "УЧ2601-0046.3.1",
+    "setup": 1,
+    "setupRatio": null,
+    "productionRatio": null,
+    "finishedCount": 0,
+    "setupTimePlan": 0,
+    "setupTimeFact": 0,
+    "singleProductionTimePlan": 0,
+    "productionTimeFact": 0,
+    "partialSetup": 540,
+    "machiningTime": 720,
+    "downtimeRatio": 0,
+    "operatorComment": "Отмеченные простои:\n[н] Частичная наладка: 540 мин",
+    "masterSetupComment": "Изготовление не по техпроцессу",
+    "masterMachiningComment": "Изготовление не по техпроцессу",
+    "masterComment": "",
+    "masterSetupDetail": "выполняют зуборезную операцию",
+    "masterMachiningDetail": "выполняют зуборезную операцию",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": true,
+    "noManualOperatorComment": false,
+    "signals": [],
+    "partsHistory": {
+     "recordsFound": 5,
+     "lines": [
+      {
+       "shiftDate": "2025-11-06",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 1,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2025-11-05",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 0,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2025-11-04",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 1,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      }
+     ]
+    },
+    "isSmallBatch": true
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 120,
+    "freshUnspecifiedDowntimes": 120,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "оператор отработал до 17 00",
+    "hasParts": true,
+    "partialSetupRatio": 0.8181818181818182
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

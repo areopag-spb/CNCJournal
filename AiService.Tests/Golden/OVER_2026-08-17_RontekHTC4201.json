@@ -1,0 +1,85 @@
+{
+ "group": "OVER",
+ "expectedDecision": "ok",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": true,
+ "request": {
+  "machine": "Rontek HTC420 №1",
+  "shiftDate": "2026-08-17",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Патрубок АР49-01-036",
+    "order": "УЧ2607-0128.1.1",
+    "setup": 1,
+    "setupRatio": 0,
+    "productionRatio": null,
+    "finishedCount": 0,
+    "setupTimePlan": 0,
+    "setupTimeFact": 93,
+    "singleProductionTimePlan": 0,
+    "productionTimeFact": 0,
+    "partialSetup": 0,
+    "machiningTime": 4,
+    "downtimeRatio": 0,
+    "operatorComment": "",
+    "masterSetupComment": "Изготовление не по техпроцессу",
+    "masterMachiningComment": "Изготовление не по техпроцессу",
+    "masterComment": "",
+    "masterSetupDetail": "с универсального участка",
+    "masterMachiningDetail": "с универсального участка",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": true,
+    "noManualOperatorComment": true,
+    "signals": [],
+    "partsHistory": null,
+    "isSmallBatch": true
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 567,
+    "freshUnspecifiedDowntimes": 567,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

@@ -1,0 +1,144 @@
+{
+ "group": "OK",
+ "expectedDecision": "ok",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": false,
+ "request": {
+  "machine": "Rontek HTC550MY",
+  "shiftDate": "2026-08-25",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Корпус клапана АР31-01-025 (взаимозаменяем с АР31-01-018)",
+    "order": "УЧ2607-0133.1.1",
+    "setup": 1,
+    "setupRatio": null,
+    "productionRatio": 0.9904,
+    "finishedCount": 88,
+    "setupTimePlan": 120,
+    "setupTimeFact": 0,
+    "singleProductionTimePlan": 7,
+    "productionTimeFact": 622,
+    "partialSetup": 0,
+    "machiningTime": 4.8,
+    "downtimeRatio": 0.0421,
+    "operatorComment": "Уборка станка.",
+    "masterSetupComment": "",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "Отмеченные простои:\n[и] Обслуживание: 30 мин\n └── 18:25 ─ 18:55",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": true,
+    "noProductionHappened": false,
+    "noManualOperatorComment": false,
+    "signals": [],
+    "partsHistory": {
+     "recordsFound": 5,
+     "lines": [
+      {
+       "shiftDate": "2026-01-10",
+       "productionRatio": "96%",
+       "setupRatio": "б/н",
+       "finishedCount": 58,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-01-09",
+       "productionRatio": "102%",
+       "setupRatio": "б/н",
+       "finishedCount": 96,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-01-08",
+       "productionRatio": "105%",
+       "setupRatio": "б/н",
+       "finishedCount": 99,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-01-07",
+       "productionRatio": "97%",
+       "setupRatio": "90%",
+       "finishedCount": 47,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2025-04-01",
+       "productionRatio": "101%",
+       "setupRatio": "б/н",
+       "finishedCount": 17,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      }
+     ]
+    },
+    "isSmallBatch": false
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 8,
+    "freshUnspecifiedDowntimes": 8,
+    "downtimeReason": "",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

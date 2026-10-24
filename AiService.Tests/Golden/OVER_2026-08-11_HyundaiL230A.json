@@ -1,0 +1,182 @@
+{
+ "group": "OVER",
+ "expectedDecision": "ok",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": true,
+ "request": {
+  "machine": "Hyundai L230A",
+  "shiftDate": "2026-08-11",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Кольцо опорное АР30-01-015-02 7х20 (М) (производство)",
+    "order": "УЧ2607-0054.1.1",
+    "setup": 1,
+    "setupRatio": 0.9048,
+    "productionRatio": 1,
+    "finishedCount": 33,
+    "setupTimePlan": 57,
+    "setupTimeFact": 63,
+    "singleProductionTimePlan": 5,
+    "productionTimeFact": 165,
+    "partialSetup": 0,
+    "machiningTime": 2.5,
+    "downtimeRatio": 0.083,
+    "operatorComment": "заливка сож.",
+    "masterSetupComment": "",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "Отмеченные простои:\n[н] Обслуживание: 22 мин\n └── 7:10 ─ 7:32",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": false,
+    "noManualOperatorComment": false,
+    "signals": [],
+    "partsHistory": {
+     "recordsFound": 2,
+     "lines": [
+      {
+       "shiftDate": "2026-03-12",
+       "productionRatio": "80%",
+       "setupRatio": "б/н",
+       "finishedCount": 30,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      }
+     ]
+    },
+    "isSmallBatch": false
+   },
+   {
+    "partName": "Манжета 13х25 (Ф4) АР18-01-012-22 (производство)",
+    "order": "УЧ2606-0040.2.1",
+    "setup": 2,
+    "setupRatio": 0,
+    "productionRatio": 0,
+    "finishedCount": 111,
+    "setupTimePlan": 0,
+    "setupTimeFact": 65,
+    "singleProductionTimePlan": 0,
+    "productionTimeFact": 337,
+    "partialSetup": 0,
+    "machiningTime": 1.5,
+    "downtimeRatio": 0,
+    "operatorComment": "",
+    "masterSetupComment": "Изготовление не по техпроцессу",
+    "masterMachiningComment": "Изготовление не по техпроцессу",
+    "masterComment": "",
+    "masterSetupDetail": "за две установки",
+    "masterMachiningDetail": "за две установки",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": false,
+    "noManualOperatorComment": true,
+    "signals": [],
+    "partsHistory": {
+     "recordsFound": 4,
+     "lines": [
+      {
+       "shiftDate": "2026-06-30",
+       "productionRatio": "102%",
+       "setupRatio": "б/н",
+       "finishedCount": 145,
+       "analystDecision": "ok",
+       "analystComment": null,
+       "aiExplanation": "Явных отклонений не обнаружено. Отчёт мастера проверен, замечаний нет.",
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-06-29",
+       "productionRatio": "115%",
+       "setupRatio": "б/н",
+       "finishedCount": 355,
+       "analystDecision": "ok",
+       "analystComment": null,
+       "aiExplanation": "Явных отклонений не обнаружено. Отчёт мастера проверен, замечаний нет.",
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-06-28",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 0,
+       "analystDecision": "ok",
+       "analystComment": null,
+       "aiExplanation": "День нормален: частичные наладки и отсутствие готовых штук объяснены релевантными причинами, системные сигналы отсутствуют Отчёт мастера проверен, замечаний нет.",
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-04-17",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 312,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      }
+     ]
+    },
+    "isSmallBatch": false
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 8,
+    "freshUnspecifiedDowntimes": 8,
+    "downtimeReason": "",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

@@ -1,0 +1,87 @@
+{
+ "group": "MISS",
+ "expectedDecision": "escalated",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": false,
+ "request": {
+  "machine": "Rontek VMC40C",
+  "shiftDate": "2026-06-21",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Крышка 66.230-1 под покрытие (30ХГСА- покрытие торца\"В\"Хтв.21 и Хим.Окс.Фосфат. прм. S=2738мм2)",
+    "order": "УЧ2601-0034.25.1",
+    "setup": 1,
+    "setupRatio": 0.3093,
+    "productionRatio": 0.8455,
+    "finishedCount": 24,
+    "setupTimePlan": 90,
+    "setupTimeFact": 291,
+    "singleProductionTimePlan": 13,
+    "productionTimeFact": 369,
+    "partialSetup": 0,
+    "machiningTime": 11.8,
+    "downtimeRatio": 0,
+    "operatorComment": "Неккоректные нормативы. В тех карте указано,что делать 6.5 по h9 калибра такого нет, ожидание пока сделают калибр токаря",
+    "masterSetupComment": "Другое",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "ожидание калибра",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": false,
+    "noManualOperatorComment": false,
+    "signals": [
+     "Оператор сообщает о некорректном нормативе или технологии"
+    ],
+    "partsHistory": null,
+    "isSmallBatch": false
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 0,
+    "freshUnspecifiedDowntimes": 0,
+    "downtimeReason": "",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

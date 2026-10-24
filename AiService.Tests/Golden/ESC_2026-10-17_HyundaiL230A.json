@@ -1,0 +1,85 @@
+{
+ "group": "ESC",
+ "expectedDecision": "escalated",
+ "loggedPromptVersion": "2026-09-25-agent-v28@agent",
+ "loggedRequiresReview": true,
+ "request": {
+  "machine": "Hyundai L230A",
+  "shiftDate": "2026-10-17",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Манжета 5х15 (Ф4) АР18-01-012 (производство)",
+    "order": "УЧ2608-0038.1.1",
+    "setup": 2,
+    "setupRatio": null,
+    "productionRatio": 0,
+    "finishedCount": 245,
+    "setupTimePlan": 0,
+    "setupTimeFact": 0,
+    "singleProductionTimePlan": 0,
+    "productionTimeFact": 645,
+    "partialSetup": 0,
+    "machiningTime": 1.5,
+    "downtimeRatio": 0.0208,
+    "operatorComment": "нормы стоят на одну установку \r\nизготовление детали в две установки\r\nуборка станка",
+    "masterSetupComment": "Изготовление не по техпроцессу",
+    "masterMachiningComment": "Изготовление не по техпроцессу",
+    "masterComment": "",
+    "masterSetupDetail": "за две установки",
+    "masterMachiningDetail": "за две установки",
+    "specifiedDowntimesList": "Отмеченные простои:\n[и] Обслуживание: 15 мин\n └── 18:44 ─ 18:59",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": true,
+    "noProductionHappened": false,
+    "noManualOperatorComment": false,
+    "signals": [],
+    "partsHistory": null,
+    "isSmallBatch": false
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 0,
+    "freshUnspecifiedDowntimes": 0,
+    "downtimeReason": "",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}

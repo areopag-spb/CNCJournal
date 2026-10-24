@@ -1,0 +1,180 @@
+{
+ "group": "MISS",
+ "expectedDecision": "escalated",
+ "loggedPromptVersion": "2026-09-25-agent-v16@agent",
+ "loggedRequiresReview": false,
+ "request": {
+  "machine": "Mazak QTS350",
+  "shiftDate": "2026-06-26",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Гильза АР136-250-Х9-041М8Л",
+    "order": "УЧ2604-0069.6.1",
+    "setup": 1,
+    "setupRatio": null,
+    "productionRatio": null,
+    "finishedCount": 0,
+    "setupTimePlan": 90,
+    "setupTimeFact": 0,
+    "singleProductionTimePlan": 10,
+    "productionTimeFact": 0,
+    "partialSetup": 508,
+    "machiningTime": 9.5,
+    "downtimeRatio": 0,
+    "operatorComment": "доработка изделия после сварки",
+    "masterSetupComment": "",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "Отмеченные простои:\n[н] Частичная наладка: 508 мин",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": true,
+    "noManualOperatorComment": false,
+    "signals": [
+     "КПД частичной наладки 18% < 70% (план 90мин, факт 508мин)"
+    ],
+    "partsHistory": null,
+    "isSmallBatch": true
+   },
+   {
+    "partName": "Гильза АР136-250-Х9-041М8Л",
+    "order": "УЧ2606-0140.1.1",
+    "setup": 1,
+    "setupRatio": 0.76,
+    "productionRatio": null,
+    "finishedCount": 0,
+    "setupTimePlan": 114,
+    "setupTimeFact": 150,
+    "singleProductionTimePlan": 43,
+    "productionTimeFact": 0,
+    "partialSetup": 0,
+    "machiningTime": 42.5,
+    "downtimeRatio": 0,
+    "operatorComment": "заготовка больше наружным диаметром и линейным размером чем в программе (244мм наружний диаметр вместо 225 по программе, и линейный 316мм вместо 307мм в программе) редактирование программы. Установка заготовки кран балкой",
+    "masterSetupComment": "",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": true,
+    "noManualOperatorComment": false,
+    "signals": [],
+    "partsHistory": {
+     "recordsFound": 5,
+     "lines": [
+      {
+       "shiftDate": "2026-06-25",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 0,
+       "analystDecision": "ok",
+       "analystComment": null,
+       "aiExplanation": "Эскалация по жёстким правилам (3). Несерийный станок имеет необъяснённые сигналы, связанные с отсутствием норматива изготовления и низким КПД частичной наладки. Эти аномалии требуют эскалации.",
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-06-24",
+       "productionRatio": "б/и",
+       "setupRatio": "14%",
+       "finishedCount": 1,
+       "analystDecision": "escalated",
+       "analystComment": "нужна конкретика от мастера",
+       "aiExplanation": "Деталь соответствует нормативам, причины отклонений релевантны и объяснены в отчёте мастера Отчёт мастера проверен, замечаний нет.",
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-06-23",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 1,
+       "analystDecision": "ok",
+       "analystComment": null,
+       "aiExplanation": "Данные соответствуют нормативам: частичная наладка отмечена как простой, причины объяснены через 'Освоение' и комментарий оператора. Ночной простой полностью обоснован причиной из списка.",
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-06-22",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 0,
+       "analystDecision": "ok",
+       "analystComment": null,
+       "aiExplanation": "Данные соответствуют нормативам и объяснениям: КПД наладки без плана не требует проверки, частичные наладки учтены в простое, ночная смена полностью отмечена как «Отсутствие оператора».",
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      },
+      {
+       "shiftDate": "2026-06-19",
+       "productionRatio": "б/и",
+       "setupRatio": "б/н",
+       "finishedCount": 0,
+       "analystDecision": "не проверено",
+       "analystComment": null,
+       "aiExplanation": null,
+       "aiFeedback": null,
+       "hasUnexplainedLowEfficiency": false
+      }
+     ]
+    },
+    "isSmallBatch": true
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 2,
+    "freshUnspecifiedDowntimes": 2,
+    "downtimeReason": "",
+    "masterComment": "",
+    "hasParts": true,
+    "partialSetupRatio": 0.7696969696969697
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": false,
+  "promptProfile": null
+ }
+}

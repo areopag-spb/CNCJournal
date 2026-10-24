@@ -1,0 +1,85 @@
+{
+ "group": "OK",
+ "expectedDecision": "ok",
+ "loggedPromptVersion": "2026-09-25-agent-v25@agent",
+ "loggedRequiresReview": false,
+ "request": {
+  "machine": "Goodway GS-1500",
+  "shiftDate": "2026-10-10",
+  "signals": [],
+  "parts": [
+   {
+    "partName": "Упор АР002-003-591",
+    "order": "Без М/Л",
+    "setup": 1,
+    "setupRatio": 0,
+    "productionRatio": 0,
+    "finishedCount": 29,
+    "setupTimePlan": 0,
+    "setupTimeFact": 312,
+    "singleProductionTimePlan": 0,
+    "productionTimeFact": 157,
+    "partialSetup": 0,
+    "machiningTime": 4.5,
+    "downtimeRatio": 0,
+    "operatorComment": "освоение \r\nнаписание прогрыммы,отрваботка",
+    "masterSetupComment": "",
+    "masterMachiningComment": "",
+    "masterComment": "",
+    "masterSetupDetail": "",
+    "masterMachiningDetail": "",
+    "specifiedDowntimesList": "",
+    "specifiedDowntimesComment": "",
+    "setupReasonOverride": "",
+    "setupReasonOverrideComment": "",
+    "machiningReasonOverride": "",
+    "machiningReasonOverrideComment": "",
+    "reasonOverrideBy": "",
+    "noSetupHappened": false,
+    "noProductionHappened": false,
+    "noManualOperatorComment": false,
+    "signals": [],
+    "partsHistory": null,
+    "isSmallBatch": false
+   }
+  ],
+  "shiftReports": [
+   {
+    "shift": "День",
+    "shiftMinutes": 660,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 191,
+    "freshUnspecifiedDowntimes": 191,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "работал на МЦ ЧПУ Токарный Hyundai L-230А    №148",
+    "hasParts": true,
+    "partialSetupRatio": 0
+   },
+   {
+    "shift": "Ночь",
+    "shiftMinutes": 630,
+    "reportExists": true,
+    "master": "Мастер",
+    "storedUnspecifiedDowntimes": 630,
+    "freshUnspecifiedDowntimes": 630,
+    "downtimeReason": "Отсутствие оператора",
+    "masterComment": "",
+    "hasParts": false,
+    "partialSetupRatio": 0
+   }
+  ],
+  "downtimeReasons": [
+   "",
+   "Другое",
+   "Организационные потери",
+   "Отсутствие оператора",
+   "Отсутствие электричества",
+   "Ремонт оборудования"
+  ],
+  "enableThinking": false,
+  "useAgent": true,
+  "isSerialMachine": true,
+  "promptProfile": null
+ }
+}
