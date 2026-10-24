@@ -191,6 +191,15 @@ public class AnalyzeResponse
     public bool EscalatedByData { get; set; }
 
     /// <summary>
+    /// Сутки можно закрыть без человека: вердикт «без эскалации» и нет признаков
+    /// ненадёжности (см. <c>AutoClosePolicy</c>). Решение о фактическом закрытии принимает клиент.
+    /// </summary>
+    public bool AutoCloseEligible { get; set; }
+
+    /// <summary> Почему сутки без эскалации всё же не закрываются автоматически. </summary>
+    public List<string> AutoCloseBlockers { get; set; } = [];
+
+    /// <summary>
     /// Эскалация вызвана суточным отчётом (детерминированные hard или S1 модели).
     /// UI подсвечивает блок «Отчёт мастера» жёлтым.
     /// </summary>

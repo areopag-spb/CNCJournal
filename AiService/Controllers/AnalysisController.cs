@@ -180,6 +180,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 logger.LogInformation(
                     "Пустой вердикт модели ({Machine} {Date}): requires_review без оснований — сброшен",
                     request.Machine, request.ShiftDate);
+            var modelWantedEscalation = llmResult.RequiresReview;
             var resetEffective = (reset || emptyModelVerdict) && !consistencyConflict
                 && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
             if (resetEffective)
@@ -282,6 +283,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
                 resetEffective, shiftRules, modelShiftIssues);
             result.EscalatedByData = dataCaused;
+            ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError);
             result.EscalatedByShiftReport = shiftCaused;
 
             if (ShiftReportRuleEvaluator.ShiftOnlyExplanation(dataCaused, shiftCaused) is { } cleanExplanation)
@@ -796,6 +798,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 logger.LogInformation(
                     "Пустой вердикт модели ({Machine} {Date}): requires_review без оснований — сброшен",
                     request.Machine, request.ShiftDate);
+        var modelWantedEscalation = llmResult.RequiresReview;
         var resetEffective = (reset || emptyModelVerdict) && !consistencyConflict && !shiftRules.MustEscalate && modelShiftIssues.Count == 0;
         if (resetEffective)
         {
@@ -879,6 +882,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
             resetEffective, shiftRules, modelShiftIssues);
         result.EscalatedByData = dataCaused;
+        ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError);
         result.EscalatedByShiftReport = shiftCaused;
 
         if (ShiftReportRuleEvaluator.ShiftOnlyExplanation(dataCaused, shiftCaused) is { } cleanExplanation)
@@ -956,6 +960,14 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             request.Machine, request.ShiftDate, ThinkingConsistency.Tail(thinking!));
         llmResult.RequiresReview = true;
         return true;
+    }
+
+    private static void ApplyAutoClosePolicy(
+        AnalyzeResponse result, bool resetOverrodeModel, AgentTrace? agentTrace, bool hasError)
+    {
+        result.AutoCloseBlockers = AutoClosePolicy.Blockers(
+            result.RequiresReview, resetOverrodeModel, agentTrace?.FellBack == true, hasError);
+        result.AutoCloseEligible = AutoClosePolicy.IsEligible(result.RequiresReview, result.AutoCloseBlockers);
     }
 
     /// <summary>
