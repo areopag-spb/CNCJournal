@@ -177,6 +177,10 @@ namespace remeLog.Infrastructure
         // 2 — переопределение причин отклонений аналитиком: 8 столбцов в parts
         //     (SetupReasonOverride и т.д.). Сборка, не знающая про этот слой, при сохранении
         //     пишет причину прямо в отметку мастера и затирает её.
+        // Автозакрытие суток ИИ (ai_day_reviews.AutoClosed/AutoCloseBlockers, ai_auto_exclude_log)
+        // добавлено аддитивно: старые сборки с этой схемой совместимы, версию не поднимали.
+        // Поднять до 3, когда совместимость со старыми клиентами сломается (например, когда
+        // исполнитель автозакрытия начнёт писать то, что старая сборка может испортить).
         public const int RequiredSchemaVersion = 2;
         [JsonIgnore]
         public static int PartsHistoryMaxRecords { get; set; } = 5;
@@ -189,8 +193,28 @@ namespace remeLog.Infrastructure
 
         public List<string> MachineInspectionCalendarSelectedMachines { get; set; } = new();
 
-        /// <summary> Выбранные станки для автозакрытия пустых суток в пакетном окне. </summary>
+        /// <summary> Выбранные станки для автозакрытия суток в пакетном окне. </summary>
         public List<string> BatchAutoCloseSelectedMachines { get; set; } = new();
+
+        // Автозакрытие суток ИИ (research/ai-service/auto-close-plan.md)
+
+        /// <summary> Kill switch: false — пакетное автозакрытие ничего не делает. </summary>
+        public bool AutoCloseEnabled { get; set; } = true;
+
+        /// <summary> Режим тени: считать и показывать «был бы закрыт», в БД ничего не писать. </summary>
+        public bool AutoCloseDryRun { get; set; } = true;
+
+        /// <summary> Предел закрытий за один запуск. </summary>
+        public int AutoCloseMaxPerRun { get; set; } = 100;
+
+        /// <summary> Минимальная уверенность ИИ для закрытия. </summary>
+        public double AutoCloseMinConfidence { get; set; } = 0.8;
+
+        /// <summary> Через сколько часов после конца суток их можно закрывать. </summary>
+        public int AutoCloseMaturityHours { get; set; } = 12;
+
+        /// <summary> Допущенные версии промпта; null/пусто — проверка выключена. </summary>
+        public List<string>? AutoCloseAllowedPromptVersions { get; set; }
 
 
         /// <summary> Режим отладки </summary>

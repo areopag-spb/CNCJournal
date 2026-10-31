@@ -30,7 +30,9 @@ namespace remeLog.Infrastructure
             // ИИ-поля: COALESCE с текущими значениями — обычное сохранение решения
             // (без анализа) их не затирает, а принятый вердикт перезаписывает прежний.
             var ai = review.AiResult;
-            const string upsertSql = @"
+            // Столбцы автозакрытия (AutoClosed/AutoCloseBlockers) есть только в БД после
+            // «Обновления БД»; версию схемы не поднимали, поэтому проверяем наличие на лету.
+            const string upsertTemplate = @"
                 DECLARE @id INT;
 
                 IF EXISTS (SELECT 1 FROM ai_day_reviews
@@ -51,6 +53,7 @@ namespace remeLog.Infrastructure
                         AiModelVersion     = COALESCE(@AiModelVersion,     AiModelVersion),
                         AiPromptVersion    = COALESCE(@AiPromptVersion,    AiPromptVersion),
                         AiAnalyzedAt       = COALESCE(@AiAnalyzedAt,       AiAnalyzedAt)
+                        /*AUTO_UPDATE*/
                     WHERE Machine = @Machine AND ShiftDate = @ShiftDate;
 
                     SELECT @id = Id FROM ai_day_reviews
@@ -62,12 +65,12 @@ namespace remeLog.Infrastructure
                         (Machine, ShiftDate, ReviewedBy, ReviewedAt,
                          Decision, IsFullyReviewed, Comment, AiFeedback,
                          AiRequiresReview, AiThinkingEnabled, AiConfidence,
-                         AiSignals, AiExplanation, AiModelVersion, AiPromptVersion, AiAnalyzedAt)
+                         AiSignals, AiExplanation, AiModelVersion, AiPromptVersion, AiAnalyzedAt/*AUTO_COLS*/)
                     VALUES
                         (@Machine, @ShiftDate, @ReviewedBy, @ReviewedAt,
                          @Decision, @IsFullyReviewed, @Comment, @AiFeedback,
                          @AiRequiresReview, @AiThinkingEnabled, @AiConfidence,
-                         @AiSignals, @AiExplanation, @AiModelVersion, @AiPromptVersion, @AiAnalyzedAt);
+                         @AiSignals, @AiExplanation, @AiModelVersion, @AiPromptVersion, @AiAnalyzedAt/*AUTO_VALS*/);
 
                     SET @id = SCOPE_IDENTITY();
                 END
@@ -78,8 +81,19 @@ namespace remeLog.Infrastructure
             {
                 await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
+                var hasAuto = await HasAutoCloseColumnsAsync(conn);
+                var upsertSql = upsertTemplate
+                    .Replace("/*AUTO_UPDATE*/", hasAuto
+                        ? @", AutoClosed = CASE WHEN @TouchReviewMeta = 1 THEN @AutoClosed ELSE AutoClosed END,
+                            AutoCloseBlockers = CASE WHEN @TouchReviewMeta = 1 THEN @AutoCloseBlockers ELSE AutoCloseBlockers END"
+                        : "")
+                    .Replace("/*AUTO_COLS*/", hasAuto ? ", AutoClosed, AutoCloseBlockers" : "")
+                    .Replace("/*AUTO_VALS*/", hasAuto ? ", @AutoClosed, @AutoCloseBlockers" : "");
                 await using var cmd = new SqlCommand(upsertSql, conn);
 
+                cmd.Parameters.AddWithValue("@AutoClosed", review.AutoClosed);
+                cmd.Parameters.AddWithValue("@AutoCloseBlockers",
+                    string.IsNullOrEmpty(review.AutoCloseBlockers) ? DBNull.Value : review.AutoCloseBlockers);
                 cmd.Parameters.AddWithValue("@Machine", review.Machine);
                 cmd.Parameters.AddWithValue("@ShiftDate", review.ShiftDate.Date);
                 cmd.Parameters.AddWithValue("@ReviewedBy", review.ReviewedBy);
@@ -171,19 +185,14 @@ namespace remeLog.Infrastructure
         public static async Task<DayReview?> GetDayReviewAsync(string machine, DateTime shiftDate)
         {
             if (DomainSettings.DemoMode) return await Task.FromResult<DayReview?>(null);
-            const string sql = @"
-                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
-                       Decision, IsFullyReviewed, Comment,
-                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
-                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
-                       AiThinkingEnabled, AiFeedback, AiVerdict
-                FROM ai_day_reviews
-                WHERE Machine = @Machine AND ShiftDate = @ShiftDate";
-
             try
             {
                 await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
+                var sql = $@"
+                SELECT {await DayReviewColumnsAsync(conn)}
+                FROM ai_day_reviews
+                WHERE Machine = @Machine AND ShiftDate = @ShiftDate";
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@Machine", machine);
                 cmd.Parameters.AddWithValue("@ShiftDate", shiftDate.Date);
@@ -205,20 +214,15 @@ namespace remeLog.Infrastructure
                 return await Task.FromResult(new Dictionary<(string, DateTime), DayReview>());
             var result = new Dictionary<(string, DateTime), DayReview>();
 
-            const string sql = @"
-                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
-                       Decision, IsFullyReviewed, Comment,
-                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
-                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
-                       AiThinkingEnabled, AiFeedback, AiVerdict
-                FROM ai_day_reviews
-                WHERE ShiftDate BETWEEN @From AND @To
-                ORDER BY ShiftDate, Machine";
-
             try
             {
                 await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
+                var sql = $@"
+                SELECT {await DayReviewColumnsAsync(conn)}
+                FROM ai_day_reviews
+                WHERE ShiftDate BETWEEN @From AND @To
+                ORDER BY ShiftDate, Machine";
                 await using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@From", fromDate.Date);
                 cmd.Parameters.AddWithValue("@To", toDate.Date);
@@ -243,19 +247,14 @@ namespace remeLog.Infrastructure
             if (DomainSettings.DemoMode) return await Task.FromResult(new List<DayReview>());
             var result = new List<DayReview>();
 
-            const string sql = @"
-                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
-                       Decision, IsFullyReviewed, Comment,
-                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
-                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
-                       AiThinkingEnabled, AiFeedback, AiVerdict
-                FROM ai_day_reviews
-                ORDER BY ShiftDate, Machine";
-
             try
             {
                 await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync(ct);
+                var sql = $@"
+                SELECT {await DayReviewColumnsAsync(conn, ct)}
+                FROM ai_day_reviews
+                ORDER BY ShiftDate, Machine";
                 await using var cmd = new SqlCommand(sql, conn);
                 await using var r = await cmd.ExecuteReaderAsync(ct);
                 while (await r.ReadAsync(ct))
@@ -278,22 +277,17 @@ namespace remeLog.Infrastructure
             if (DomainSettings.DemoMode) return await Task.FromResult(new List<DayReview>());
             var result = new List<DayReview>();
 
-            const string sql = @"
-                SELECT Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
-                       Decision, IsFullyReviewed, Comment,
-                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
-                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
-                       AiThinkingEnabled, AiFeedback, AiVerdict
-                FROM ai_day_reviews
-                WHERE Comment LIKE @Marker + N'%'
-                ORDER BY ShiftDate DESC, Machine";
-
             try
             {
                 await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync(ct);
+                var sql = $@"
+                SELECT {await DayReviewColumnsAsync(conn, ct)}
+                FROM ai_day_reviews
+                WHERE Comment LIKE @Marker + N'%'
+                ORDER BY ShiftDate DESC, Machine";
                 await using var cmd = new SqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@Marker", "Автозакрытие:");
+                cmd.Parameters.AddWithValue("@Marker", DayReview.AutoCloseCommentMarker);
                 await using var r = await cmd.ExecuteReaderAsync(ct);
                 while (await r.ReadAsync(ct))
                 {
@@ -427,6 +421,203 @@ namespace remeLog.Infrastructure
             AiThinkingEnabled = r.IsDBNull(15) ? null : r.GetBoolean(15),
             AiFeedback = r.IsDBNull(16) ? null : r.GetString(16),
             AiVerdict = r.IsDBNull(17) ? null : r.GetString(17),
+            // Столбцы автозакрытия в выборке только если они есть в БД (см. DayReviewColumnsAsync).
+            AutoClosed = r.FieldCount > 18 && !r.IsDBNull(18) && r.GetBoolean(18),
+            AutoCloseBlockers = r.FieldCount > 19 && !r.IsDBNull(19) ? r.GetString(19) : null,
         };
+
+        private const string DayReviewBaseColumns = @"Id, Machine, ShiftDate, ReviewedBy, ReviewedAt,
+                       Decision, IsFullyReviewed, Comment,
+                       AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
+                       AiModelVersion, AiPromptVersion, AiAnalyzedAt,
+                       AiThinkingEnabled, AiFeedback, AiVerdict";
+
+        /// <summary> Список столбцов ai_day_reviews для ReadDayReview (индексы 0–17 фиксированы). </summary>
+        private static async Task<string> DayReviewColumnsAsync(SqlConnection conn, CancellationToken ct = default) =>
+            await HasAutoCloseColumnsAsync(conn, ct)
+                ? DayReviewBaseColumns + ", AutoClosed, AutoCloseBlockers"
+                : DayReviewBaseColumns;
+
+        // Версию схемы не поднимали (см. AppSettings.RequiredSchemaVersion), поэтому клиент
+        // новее БД: наличие столбцов автозакрытия проверяем на лету. «Есть» кэшируем насовсем,
+        // «нет» — на 10 минут (администратор может обновить БД, не перезапуская клиентов).
+        private static bool? _autoCloseColumns;
+        private static DateTime _autoCloseColumnsCheckedAt;
+
+        private static async Task<bool> HasAutoCloseColumnsAsync(SqlConnection conn, CancellationToken ct = default)
+        {
+            if (_autoCloseColumns == true) return true;
+            if (_autoCloseColumns == false
+                && DateTime.UtcNow - _autoCloseColumnsCheckedAt < TimeSpan.FromMinutes(10))
+                return false;
+
+            await using var cmd = new SqlCommand(
+                @"SELECT CASE WHEN COL_LENGTH('ai_day_reviews', 'AutoClosed') IS NOT NULL
+                               AND COL_LENGTH('ai_day_reviews', 'AutoCloseBlockers') IS NOT NULL
+                              THEN 1 ELSE 0 END", conn);
+            var has = Convert.ToInt32(await cmd.ExecuteScalarAsync(ct)) == 1;
+            _autoCloseColumns = has;
+            _autoCloseColumnsCheckedAt = DateTime.UtcNow;
+            return has;
+        }
+
+        /// <summary>
+        /// Пишет журнал авто-исключений одним батчем в одной транзакции. Таблицы нет
+        /// (БД не обновлена) или запись не удалась — Fail: автозакрытие с исключениями
+        /// без журнала не выполняется.
+        /// </summary>
+        public static async Task<DbResult<int>> SaveAutoExcludeLogAsync(IReadOnlyCollection<AutoExcludeLogEntry> entries)
+        {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<int>.Ok(0));
+            if (entries.Count == 0) return DbResult<int>.Ok(0);
+
+            const string sql = @"
+                INSERT INTO ai_auto_exclude_log
+                    (Machine, ShiftDate, PartGuid, PartName, Setup, [Order], Reason,
+                     AiPromptVersion, ExcludedBy, ExcludedAt)
+                VALUES
+                    (@Machine, @ShiftDate, @PartGuid, @PartName, @Setup, @Order, @Reason,
+                     @AiPromptVersion, @ExcludedBy, @ExcludedAt);";
+
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var tx = conn.BeginTransaction();
+                foreach (var e in entries)
+                {
+                    await using var cmd = new SqlCommand(sql, conn, tx);
+                    cmd.Parameters.AddWithValue("@Machine", e.Machine);
+                    cmd.Parameters.AddWithValue("@ShiftDate", e.ShiftDate.Date);
+                    cmd.Parameters.AddWithValue("@PartGuid", e.PartGuid);
+                    cmd.Parameters.AddWithValue("@PartName", (object?)e.PartName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Setup", e.Setup);
+                    cmd.Parameters.AddWithValue("@Order", (object?)e.Order ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Reason", (object?)e.Reason ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@AiPromptVersion", (object?)e.AiPromptVersion ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ExcludedBy", e.ExcludedBy);
+                    cmd.Parameters.AddWithValue("@ExcludedAt", e.ExcludedAt);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+                await tx.CommitAsync();
+                return DbResult<int>.Ok(entries.Count);
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "SaveAutoExcludeLogAsync");
+                return DbResult<int>.FailWithError(ex.Message);
+            }
+        }
+
+        /// <summary> Журнал авто-исключений по суткам станка (не отменённые и отменённые). Нет таблицы — пусто. </summary>
+        public static async Task<List<AutoExcludeLogEntry>> GetAutoExcludeLogAsync(string machine, DateTime shiftDate)
+        {
+            var result = new List<AutoExcludeLogEntry>();
+            if (DomainSettings.DemoMode) return result;
+
+            const string sql = @"
+                SELECT Id, Machine, ShiftDate, PartGuid, PartName, Setup, [Order], Reason,
+                       AiPromptVersion, ExcludedBy, ExcludedAt, RevertedBy, RevertedAt
+                FROM ai_auto_exclude_log
+                WHERE Machine = @Machine AND ShiftDate = @ShiftDate
+                ORDER BY ExcludedAt, Id";
+
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Machine", machine);
+                cmd.Parameters.AddWithValue("@ShiftDate", shiftDate.Date);
+                await using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    result.Add(new AutoExcludeLogEntry
+                    {
+                        Id = r.GetInt32(0),
+                        Machine = r.GetString(1),
+                        ShiftDate = r.GetDateTime(2),
+                        PartGuid = r.GetGuid(3),
+                        PartName = r.IsDBNull(4) ? string.Empty : r.GetString(4),
+                        Setup = r.GetInt32(5),
+                        Order = r.IsDBNull(6) ? string.Empty : r.GetString(6),
+                        Reason = r.IsDBNull(7) ? string.Empty : r.GetString(7),
+                        AiPromptVersion = r.IsDBNull(8) ? null : r.GetString(8),
+                        ExcludedBy = r.GetString(9),
+                        ExcludedAt = r.GetDateTime(10),
+                        RevertedBy = r.IsDBNull(11) ? null : r.GetString(11),
+                        RevertedAt = r.IsDBNull(12) ? null : r.GetDateTime(12),
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                // Таблицы может не быть (БД не обновлена) — для чтения это «журнала нет».
+                Log.WriteError(ex, "GetAutoExcludeLogAsync");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Отмечает отменёнными активные записи журнала по строкам суток (откат автозакрытия:
+        /// сами исключения снимает вызывающий).
+        /// </summary>
+        public static async Task<DbResult<bool>> RevertAutoExcludeLogAsync(
+            string machine, DateTime shiftDate, IReadOnlyCollection<Guid> partGuids, string revertedBy)
+        {
+            if (DomainSettings.DemoMode || partGuids.Count == 0) return await Task.FromResult(DbResult<bool>.Ok(true));
+            const string sql = @"
+                UPDATE ai_auto_exclude_log
+                SET RevertedBy = @By, RevertedAt = @At
+                WHERE Machine = @Machine AND ShiftDate = @ShiftDate
+                  AND PartGuid = @PartGuid AND RevertedAt IS NULL";
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                foreach (var guid in partGuids)
+                {
+                    await using var cmd = new SqlCommand(sql, conn);
+                    cmd.Parameters.AddWithValue("@Machine", machine);
+                    cmd.Parameters.AddWithValue("@ShiftDate", shiftDate.Date);
+                    cmd.Parameters.AddWithValue("@PartGuid", guid);
+                    cmd.Parameters.AddWithValue("@By", revertedBy);
+                    cmd.Parameters.AddWithValue("@At", DateTime.Now);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+                return DbResult<bool>.Ok(true);
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "RevertAutoExcludeLogAsync");
+                return DbResult<bool>.FailWithError(ex.Message);
+            }
+        }
+
+        /// <summary> Отмечает запись журнала отменённой (само исключение снимает вызывающий). </summary>
+        public static async Task<DbResult<bool>> MarkAutoExcludeRevertedAsync(int id, string revertedBy)
+        {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<bool>.Ok(true));
+            const string sql = @"
+                UPDATE ai_auto_exclude_log
+                SET RevertedBy = @By, RevertedAt = @At
+                WHERE Id = @Id AND RevertedAt IS NULL";
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Id", id);
+                cmd.Parameters.AddWithValue("@By", revertedBy);
+                cmd.Parameters.AddWithValue("@At", DateTime.Now);
+                await cmd.ExecuteNonQueryAsync();
+                return DbResult<bool>.Ok(true);
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "MarkAutoExcludeRevertedAsync");
+                return DbResult<bool>.FailWithError(ex.Message);
+            }
+        }
     }
 }

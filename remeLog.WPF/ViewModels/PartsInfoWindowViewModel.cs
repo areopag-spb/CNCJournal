@@ -425,6 +425,7 @@ namespace remeLog.ViewModels
                 if (Set(ref _CurrentDayReview, value))
                 {
                     OnPropertyChanged(nameof(DayReviewStatusText));
+                    OnPropertyChanged(nameof(DayReviewStatusToolTip));
                     OnPropertyChanged(nameof(DayReviewStatusColor));
                     OnPropertyChanged(nameof(IsDayReviewed));
                     OnPropertyChanged(nameof(AiVerdictText));
@@ -628,6 +629,13 @@ namespace remeLog.ViewModels
                     }
                 }
 
+                if (!AiResult.RequiresReview && AiResult.AutoCloseBlockers.Length > 0)
+                {
+                    sb.AppendLine($"{Environment.NewLine}Не закрыто автоматически:");
+                    foreach (var b in AiResult.AutoCloseBlockers)
+                        sb.AppendLine($"  • {b}");
+                }
+
                 return sb.ToString().TrimEnd();
             }
         }
@@ -651,6 +659,40 @@ namespace remeLog.ViewModels
         public string DayReviewStatusText => CurrentDayReview == null
                 ? "Не проверено"
                 : $"{CurrentDayReview.Decision.ToDisplayString()}  ·  {CurrentDayReview.ReviewedBy}  ·  {CurrentDayReview.ReviewedAt:dd.MM.yy HH:mm}";
+
+        private List<AutoExcludeLogEntry> _AutoExcludeLog = new();
+
+        /// <summary>
+        /// Подсказка к статусу суток, закрытых ИИ без человека: когда/чем закрыто и какие
+        /// исключения из К1 ИИ применил сам. null — сутки закрыты человеком или не закрыты.
+        /// </summary>
+        public string? DayReviewStatusToolTip
+        {
+            get
+            {
+                if (CurrentDayReview is not { IsAutoClosed: true } review) return null;
+
+                var sb = new StringBuilder();
+                sb.Append("Закрыто ИИ без участия человека");
+                if (review.AiAnalyzedAt != null) sb.Append($" ({review.AiAnalyzedAt:dd.MM.yy HH:mm}");
+                if (!string.IsNullOrEmpty(review.AiPromptVersion))
+                    sb.Append(review.AiAnalyzedAt != null ? $", {review.AiPromptVersion})" : $" ({review.AiPromptVersion})");
+                else if (review.AiAnalyzedAt != null) sb.Append(')');
+                sb.AppendLine(".");
+                sb.Append("Не согласны — меняйте решение как обычно (день откроется двойным кликом в календаре).");
+                if (_AutoExcludeLog.Count > 0)
+                {
+                    sb.AppendLine().AppendLine().Append("Исключения из К1, применённые ИИ:");
+                    foreach (var e in _AutoExcludeLog)
+                    {
+                        sb.AppendLine().Append($"  • {e.PartName} | М/Л: {e.Order} | Уст.{e.Setup} — {e.Reason}");
+                        if (e.IsReverted) sb.Append($" [отменено {e.RevertedBy} {e.RevertedAt:dd.MM HH:mm}]");
+                    }
+                    sb.AppendLine().Append("Снять исключение — колонка «Исключить».");
+                }
+                return sb.ToString();
+            }
+        }
 
         /// <summary> Цвет статуса: зелёный / жёлтый / серый. </summary>
         public string DayReviewStatusColor => CurrentDayReview?.Decision switch
@@ -3980,6 +4022,10 @@ namespace remeLog.ViewModels
                           ?? PartsInfo.Machine;
 
             CurrentDayReview = await Database.GetDayReviewAsync(machine, FromDate.Date);
+            _AutoExcludeLog = CurrentDayReview is { IsAutoClosed: true }
+                ? await Database.GetAutoExcludeLogAsync(machine, FromDate.Date)
+                : new List<AutoExcludeLogEntry>();
+            OnPropertyChanged(nameof(DayReviewStatusToolTip));
 
             if (CurrentDayReview?.HasAiResult == true)
             {

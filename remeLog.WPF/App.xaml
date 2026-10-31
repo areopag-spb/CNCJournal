@@ -48,6 +48,7 @@
             <cnv:AllVisibleMultiConverter x:Key="AllVisibleMultiConverter"/>
             <cnv:VisibilityConverter x:Key="VisibilityConverter"/>
             <cnv:MachineInspectionCalendarCellIconMultiConverter x:Key="MachineInspectionCalendarCellIconMultiConverter"/>
+            <cnv:MachineInspectionCalendarCellToolTipMultiConverter x:Key="MachineInspectionCalendarCellToolTipMultiConverter"/>
             <cnv:MachineActivityStatusTextConverter x:Key="MachineActivityStatusTextConverter"/>
             <cnv:MachineActivityStatusBrushConverter x:Key="MachineActivityStatusBrushConverter"/>
             <cnv:BoolOrMultiConverter x:Key="BoolOrMultiConverter"/>

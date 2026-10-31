@@ -2,6 +2,7 @@ using libeLog;
 using libeLog.Base;
 using remeLog.Core;
 using remeLog.Core.Db;
+using remeLog.Core.Services;
 using remeLog.Infrastructure;
 using remeLog.Infrastructure.Types;
 using remeLog.Models;
@@ -95,6 +96,19 @@ namespace remeLog.ViewModels
             }
         }
 
+        /// <summary> Режим тени автозакрытия: ничего не писать в БД (настройка клиента). </summary>
+        public bool AutoCloseDryRun
+        {
+            get => AppSettings.Instance.AutoCloseDryRun;
+            set
+            {
+                if (AppSettings.Instance.AutoCloseDryRun == value) return;
+                AppSettings.Instance.AutoCloseDryRun = value;
+                AppSettings.Save();
+                OnPropertyChanged();
+            }
+        }
+
         private DateTime _FromDate = DateTime.Today.AddDays(-30);
         /// <summary> Начало периода поиска пустых суток (только AutoCloseEmpty). </summary>
         public DateTime FromDate
@@ -156,9 +170,9 @@ namespace remeLog.ViewModels
         public BatchAiAnalysisViewModel()
         {
             _ThinkingEnabled = AppSettings.Instance.AiThinkingEnabled;
-            // В режиме автозакрытия ИИ не нужен — Старт доступен и без него.
+            // Автозакрытие тоже идёт через ИИ-анализ суток — без ИИ Старт недоступен.
             StartCommand = new LambdaCommand(OnStartExecuted,
-                _ => !IsRunning && (AutoCloseEmpty || AiHealthMonitor.Instance.IsAiAvailable));
+                _ => !IsRunning && AiHealthMonitor.Instance.IsAiAvailable);
             CancelCommand = new LambdaCommand(OnCancelExecuted, _ => IsRunning);
             RefreshCommand = new LambdaCommand(OnRefreshExecuted, _ => !IsRunning);
             ShowAllMachinesCommand = new LambdaCommand(_ => SetAllMachineFilters(true), _ => !IsRunning);
@@ -309,33 +323,21 @@ namespace remeLog.ViewModels
                 return;
             }
 
-            // Пустота — одним запросом на станок за весь период (а не по запросу
-            // на сутки): непустые даты вылетают из списка сразу. Перепроверка
-            // в момент закрытия остаётся страховкой (данные могли поменяться).
-            var nonEmpty = new HashSet<(string Machine, DateTime Date)>();
-            foreach (var machine in machines)
-            {
-                try
-                {
-                    var machineParts = await Database.ReadPartsByShiftDateAndMachine(
-                        from, to, machine, CancellationToken.None);
-                    foreach (var p in machineParts)
-                        nonEmpty.Add((machine, p.ShiftDate.Date));
-                }
-                catch (Exception ex)
-                {
-                    // Станок без проверки пустоты: его сутки останутся
-                    // кандидатами, исполнение перепроверит и решит.
-                    Util.WriteLog(ex, $"BatchAutoClose: {machine}");
-                }
-                if (version != _refreshVersion) return;
-            }
+            // Сутки, по которым человек уже принял решение, ИИ не трогает (до анализа —
+            // он дорогой). Авто-ревью («ИИ-авто») человеческим не считается.
+            var humanReviewed = new HashSet<(string Machine, DateTime Date)>();
+            var reviews = await Database.GetDayReviewsForPeriodAsync(machines, from, to);
+            foreach (var (key, review) in reviews)
+                if (!review.IsAutoClosed) humanReviewed.Add(key);
+            if (version != _refreshVersion) return;
 
             var holidays = new HashSet<DateTime>(DomainSettings.Holidays.Select(d => d.Date));
+            var maturity = AppSettings.Instance.AutoCloseMaturityHours;
             var count = 0;
             var closed = 0;
             var noReports = 0;
-            var withRecords = 0;
+            var reviewed = 0;
+            var notMature = 0;
             foreach (var g in (shiftsResult.Value ?? Enumerable.Empty<ShiftInfo>())
                          .GroupBy(s => new { s.Machine, Date = s.ShiftDate.Date })
                          .OrderBy(g => g.Key.Date).ThenBy(g => g.Key.Machine))
@@ -348,8 +350,10 @@ namespace remeLog.ViewModels
                 if (day is null || night is null) { noReports++; continue; }
                 // Уже зелёные в календаре проверки — пропускаем.
                 if (day.IsChecked && night.IsChecked) { closed++; continue; }
-                // Есть записи — не пустые, в список не берём.
-                if (nonEmpty.Contains((g.Key.Machine, g.Key.Date))) { withRecords++; continue; }
+                // Решение человека уже есть — не наше дело.
+                if (humanReviewed.Contains((g.Key.Machine, g.Key.Date))) { reviewed++; continue; }
+                // Рано: сутки ещё не созрели (то же правило, что у AutoCloseGate).
+                if (DateTime.Now < g.Key.Date.AddDays(1).AddHours(maturity)) { notMature++; continue; }
                 Items.Add(new BatchItem
                 {
                     DayReviewId = 0,
@@ -363,10 +367,11 @@ namespace remeLog.ViewModels
 
             TotalCount = count;
             var scope = $"{from:dd.MM.yyyy}–{to:dd.MM.yyyy}";
-            var rest = $"с записями: {withRecords}, уже закрыто: {closed}, без обоих отчётов: {noReports}";
+            var rest = $"уже закрыто: {closed}, решение человека: {reviewed}, " +
+                       $"не созрели: {notMature}, без обоих отчётов: {noReports}";
             StatusText = count == 0
-                ? $"Нет пустых кандидатов ({scope}): {rest}"
-                : $"Пустых к автозакрытию: {count} ({scope}); {rest}";
+                ? $"Нет кандидатов ({scope}): {rest}"
+                : $"К автозакрытию: {count} ({scope}); {rest}";
             await Task.CompletedTask;
         }
 
@@ -411,6 +416,9 @@ namespace remeLog.ViewModels
             TotalCount = total;
             OverallProgress = 0;
 
+            var executor = AutoCloseEmpty ? CreateAutoCloseExecutor() : null;
+            var limitHit = false;
+
             try
             {
                 foreach (var item in pending)
@@ -434,12 +442,17 @@ namespace remeLog.ViewModels
                         var parts = await Database.ReadPartsByShiftDateAndMachine(
                             item.Date, item.Date, item.Machine, ct);
 
-                        if (AutoCloseEmpty)
+                        if (executor != null)
                         {
-                            await AutoCloseEmptyItemAsync(item, parts, ct);
+                            var limitReached = await AutoCloseItemAsync(executor, item, parts, ct);
                             done++;
                             ProcessedCount = done;
                             OverallProgress = (double)done / total;
+                            if (limitReached)
+                            {
+                                limitHit = true;
+                                break;
+                            }
                             continue;
                         }
 
@@ -495,7 +508,10 @@ namespace remeLog.ViewModels
 
                 StatusText = ct.IsCancellationRequested
                     ? $"Остановлено. Обработано {done}/{total}"
-                    : $"Готово. Обработано {done}/{total}";
+                    : limitHit
+                        ? $"Предел автозакрытия за запуск ({AppSettings.Instance.AutoCloseMaxPerRun}) достигнут. Обработано {done}/{total}"
+                        : $"Готово. Обработано {done}/{total}"
+                          + (executor is { } closer ? $"; {(AppSettings.Instance.AutoCloseDryRun ? "в тени закрыто бы" : "закрыто")}: {closer.ClosedCount}" : "");
             }
             finally
             {
@@ -549,29 +565,34 @@ namespace remeLog.ViewModels
             item.RequiresReview = result.RequiresReview;
         }
 
-        /// <summary>
-        /// Автозакрытие одного суткостанка через ту же ИИ-логику, что суточный
-        /// анализ аналитика («Призвать ИИ к ответу»): отсутствие записей само по
-        /// себе ок, решают отчёты мастера. Вердикт ок — закрываем автоматически
-        /// (IsChecked + DayReview с вердиктом ИИ); требует проверки — на ручной
-        /// разбор. Содержимое отчётов не трогаем.
-        /// </summary>
-        private async Task AutoCloseEmptyItemAsync(
-            BatchItem item, IReadOnlyCollection<Part> parts, CancellationToken ct)
+        private AutoCloseExecutor CreateAutoCloseExecutor()
         {
-            if (ct.IsCancellationRequested)
-            {
-                item.State = BatchItemState.Cancelled;
-                item.Summary = "отменено";
-                return;
-            }
-            if (parts.Count > 0)
-            {
-                item.State = BatchItemState.Skipped;
-                item.Summary = $"есть записи ({parts.Count}) — пропуск";
-                return;
-            }
+            var cfg = AppSettings.Instance;
+            return new AutoCloseExecutor(
+                new DbAutoCloseStore(),
+                new AutoCloseOptions
+                {
+                    MinConfidence = cfg.AutoCloseMinConfidence,
+                    MaturityHours = cfg.AutoCloseMaturityHours,
+                    AllowedPromptVersions = cfg.AutoCloseAllowedPromptVersions,
+                },
+                new AutoCloseRunOptions
+                {
+                    Enabled = cfg.AutoCloseEnabled,
+                    DryRun = cfg.AutoCloseDryRun,
+                    MaxCloses = cfg.AutoCloseMaxPerRun,
+                });
+        }
 
+        /// <summary>
+        /// Автозакрытие одного суткостанка: ИИ-анализ суток (как «Призвать ИИ к ответу»),
+        /// затем решение и запись в <see cref="AutoCloseExecutor"/> (допуск, автоисключения,
+        /// ревью «ИИ-авто», зелёная клетка календаря). Сутки с записями и без.
+        /// </summary>
+        /// <returns> true — достигнут предел закрытий за запуск, цикл нужно остановить. </returns>
+        private async Task<bool> AutoCloseItemAsync(
+            AutoCloseExecutor executor, BatchItem item, IReadOnlyList<Part> parts, CancellationToken ct)
+        {
             var result = await _aiClient.AnalyzeAsync(
                 item.Machine, item.Date, parts,
                 thinkingProgress: ItemProgress(item),
@@ -581,72 +602,55 @@ namespace remeLog.ViewModels
             {
                 item.State = BatchItemState.Cancelled;
                 item.Summary = "отменено";
-                return;
+                return false;
             }
             if (result.HasError)
             {
                 item.State = BatchItemState.Error;
                 item.Summary = $"ошибка: {result.Error}";
                 item.Explanation = result.Error;
-                return;
+                return false;
             }
 
             FillItemVerdict(item, result);
-            if (result.RequiresReview)
-            {
-                item.State = BatchItemState.Done;
-                item.Summary = BuildResultSummary(result) + " — вручную";
-                return;
-            }
+            var outcome = await executor.TryCloseAsync(
+                item.Machine, item.Date, result, parts, AppSettings.AiModel, ThinkingEnabled, ct);
+            var reasons = string.Join("; ", outcome.Reasons);
+            var excluded = outcome.ExclusionsApplied > 0 ? $", исключено строк: {outcome.ExclusionsApplied}" : "";
 
-            // ИИ ок: закрываем. Отчёты технически обязаны существовать —
-            // IsChecked ставить некуда без строк cnc_shifts.
-            var day = Database.ReadShiftInfo(new ShiftInfo(item.Date, ShiftType.Day, item.Machine));
-            var night = Database.ReadShiftInfo(new ShiftInfo(item.Date, ShiftType.Night, item.Machine));
-            if (!day.IsOk || !night.IsOk)
+            switch (outcome.Status)
             {
-                item.State = BatchItemState.Error;
-                item.Summary = $"не удалось прочитать отчёты: {(!day.IsOk ? day.Error : night.Error)}";
-                return;
+                case AutoCloseStatus.Closed:
+                    item.State = BatchItemState.Done;
+                    item.Summary = $"закрыт ИИ{excluded}";
+                    break;
+                case AutoCloseStatus.WouldClose:
+                    item.State = BatchItemState.Done;
+                    item.Summary = $"тень: был бы закрыт{excluded}";
+                    break;
+                case AutoCloseStatus.Deferred:
+                    item.State = BatchItemState.Skipped;
+                    item.Summary = $"отложено: {reasons}";
+                    break;
+                case AutoCloseStatus.Manual:
+                    item.State = BatchItemState.Done;
+                    item.Summary = $"{BuildResultSummary(result)} — вручную: {reasons}";
+                    break;
+                case AutoCloseStatus.Error:
+                    item.State = BatchItemState.Error;
+                    item.Summary = $"ошибка закрытия: {reasons}";
+                    item.Explanation = reasons;
+                    break;
+                case AutoCloseStatus.Disabled:
+                    item.State = BatchItemState.Skipped;
+                    item.Summary = reasons;
+                    break;
+                case AutoCloseStatus.LimitReached:
+                    item.State = BatchItemState.Skipped;
+                    item.Summary = reasons;
+                    return true;
             }
-            if (day.Value is not { Count: 1 } || night.Value is not { Count: 1 })
-            {
-                item.State = BatchItemState.Skipped;
-                item.Summary = "нет обоих отчётов мастера — пропуск";
-                return;
-            }
-
-            day.Value[0].IsChecked = true;
-            night.Value[0].IsChecked = true;
-            var writeDay = Database.WriteShiftInfo(day.Value[0]);
-            var writeNight = Database.WriteShiftInfo(night.Value[0]);
-            if (!writeDay.IsOk || !writeNight.IsOk)
-            {
-                item.State = BatchItemState.Error;
-                item.Summary = $"не удалось закрыть: {(!writeDay.IsOk ? writeDay.Error : writeNight.Error)}";
-                return;
-            }
-
-            var review = new DayReview(
-                item.Machine, item.Date, Environment.UserName + "+ИИ",
-                AnalystDecision.Ok, true,
-                "Автозакрытие: записей нет");
-            review.AiResult = result;
-            review.AiThinkingEnabled = ThinkingEnabled;
-            review.AiModelVersion = AppSettings.AiModel;
-            // Тот же аудиторский тег, что AppendAiAuditTag ставит в ручном accept-пути.
-            var agentMark = result.PromptVersion?.EndsWith("@agent") == true ? " агент" : "";
-            review.AiFeedback = $"[ИИ {AppSettings.AiModel}/{result.PromptVersion}{agentMark}]";
-            var saved = await Database.SaveDayReviewAsync(review);
-            if (saved.Status != DbResult.Ok)
-            {
-                item.State = BatchItemState.Error;
-                item.Summary = $"не удалось записать ревью: {saved.Error}";
-                return;
-            }
-
-            item.State = BatchItemState.Done;
-            item.Summary = "закрыт (пусто, ИИ ок)";
+            return false;
         }
     }
 

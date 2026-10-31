@@ -28,6 +28,12 @@
         <DataTemplate x:Key="MachineCellTemplate">
             <ContentControl Width="16" Height="16" Margin="0 1"
                             HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ContentControl.ToolTip>
+                    <MultiBinding Converter="{StaticResource MachineInspectionCalendarCellToolTipMultiConverter}">
+                        <Binding/>
+                        <Binding Path="Column.Header" RelativeSource="{RelativeSource AncestorType=DataGridCell}"/>
+                    </MultiBinding>
+                </ContentControl.ToolTip>
                 <ContentControl.Content>
                     <MultiBinding Converter="{StaticResource MachineInspectionCalendarCellIconMultiConverter}">
                         <Binding/>

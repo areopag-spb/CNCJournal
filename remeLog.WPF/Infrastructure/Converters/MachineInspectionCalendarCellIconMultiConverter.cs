@@ -22,7 +22,7 @@ namespace remeLog.Infrastructure.Converters
                 {
                     if (cell.Machine == machine)
                     {
-                        var key = cell.IsChecked ? "StatusOkIcon" : "StatusErrorIcon";
+                        var key = !cell.IsChecked ? "StatusErrorIcon" : cell.IsClosedByAi ? "DozorIcon.Ok" : "StatusOkIcon";
                         return Application.Current.TryFindResource(key) ?? DependencyProperty.UnsetValue;
                     }
                 }

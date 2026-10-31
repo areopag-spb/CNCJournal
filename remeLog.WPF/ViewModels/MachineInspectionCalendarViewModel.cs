@@ -337,6 +337,10 @@ namespace remeLog.ViewModels
             var shifts = shiftsResult.Value;
             var shiftLookup = shifts.ToLookup(s => (s.Machine, s.ShiftDate.Date));
 
+            // Кто закрыл сутки: ревью «ИИ-авто» отличает зелёный «глаз» от обычной галочки.
+            // Нет столбцов/таблицы или сбой — календарь остаётся прежним (галочки).
+            var reviews = await Database.GetDayReviewsForPeriodAsync(machines, FromDate, ToDate);
+
             var days = new List<MachineInspectionCalendarDayRow>();
             for (var current = FromDate; current <= ToDate; current = current.AddDays(1))
             {
@@ -351,13 +355,17 @@ namespace remeLog.ViewModels
 
                     bool hasShift = dayShift != null || nightShift != null;
                     bool isChecked = (dayShift?.IsChecked == true) && (nightShift?.IsChecked == true);
+                    var closedByAi = isChecked
+                        && reviews.TryGetValue((machine, current.Date), out var review)
+                        && review.IsAutoClosed;
 
                     cells.Add(new MachineInspectionCalendarCell
                     {
                         Machine = machine,
                         Date = current,
                         HasShift = hasShift,
-                        IsChecked = isChecked
+                        IsChecked = isChecked,
+                        IsClosedByAi = closedByAi
                     });
                 }
 
@@ -419,6 +427,8 @@ namespace remeLog.ViewModels
         public string Machine { get; set; } = string.Empty;
         public DateTime Date { get; set; }
         public bool IsChecked { get; set; }
+        /// <summary> Сутки закрыл ИИ без человека (зелёный «глаз» вместо галочки). </summary>
+        public bool IsClosedByAi { get; set; }
         public bool HasShift { get; set; }
     }
 

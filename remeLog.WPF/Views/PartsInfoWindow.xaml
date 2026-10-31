@@ -1391,6 +1391,7 @@
                             <StackPanel Grid.Row="0" Grid.Column="3" Orientation="Horizontal"
                                         VerticalAlignment="Center" Margin="8 0 0 0">
                                 <TextBlock Text="{Binding DayReviewStatusText}"
+                                           ToolTip="{Binding DayReviewStatusToolTip}"
                                            VerticalAlignment="Center"
                                            FontSize="11">
                                     <TextBlock.Style>

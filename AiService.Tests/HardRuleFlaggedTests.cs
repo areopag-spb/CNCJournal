@@ -239,6 +239,22 @@ public class HardRuleFlaggedTests
             s => s.Contains("Оператор сообщает о некорректном нормативе"));
     }
 
+    [Theory]
+    [InlineData("Просьба не учитывать")]
+    [InlineData("прошу исключить из расчёта")]
+    [InlineData("не засчитывать наладку")]
+    public void Evaluate_OperatorAsksToExclude_HardEvenWithMasterReason(string comment)
+    {
+        var part = OperatorPart(comment);
+        part.MasterMachiningComment = "Другое";
+        part.MasterMachiningDetail = "разовая причина";
+
+        var result = HardRuleEvaluator.Evaluate(Request(part));
+
+        Assert.True(result.MustEscalate);
+        Assert.Contains(result.HardSignals, s => s.Contains("Оператор просит не учитывать"));
+    }
+
     [Fact]
     public void Evaluate_OperatorTechnologyDoubt_SoftWithMasterReason()
     {

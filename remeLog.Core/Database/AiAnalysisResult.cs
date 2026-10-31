@@ -20,6 +20,11 @@ namespace remeLog.Infrastructure
         public string[] ShiftReportSummary { get; set; } = Array.Empty<string>();
         [JsonPropertyName("escalatedByData")] public bool EscalatedByData { get; set; }
         [JsonPropertyName("escalatedByShiftReport")] public bool EscalatedByShiftReport { get; set; }
+        /// <summary> Сервер разрешает закрыть сутки без человека (см. AutoClosePolicy). </summary>
+        [JsonPropertyName("autoCloseEligible")] public bool AutoCloseEligible { get; set; }
+        /// <summary> Почему сутки без эскалации всё же не закрываются автоматически. </summary>
+        [JsonPropertyName("autoCloseBlockers")]
+        public string[] AutoCloseBlockers { get; set; } = Array.Empty<string>();
         [JsonPropertyName("error")] public string? Error { get; set; }
         [JsonPropertyName("promptVersion")] public string? PromptVersion { get; set; }
         public bool HasError => !string.IsNullOrEmpty(Error);

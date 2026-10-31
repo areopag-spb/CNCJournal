@@ -770,6 +770,13 @@ namespace libeLog.Infrastructure.Sql
                         ELSE N'?'
                     END",
                     persisted: true)
+                // Автозакрытие без человека (этап 2.3, research/ai-service/auto-close-plan.md).
+                // AutoClosed — сутки закрыл ИИ сам (ReviewedBy = «ИИ-авто»); метрики
+                // «согласие аналитика» должны исключать такие строки. AutoCloseBlockers —
+                // причины, по которым сутки НЕ закрыты автоматически (JSON-массив строк).
+                // В КОНЦЕ таблицы: порядок существующих столбцов не сдвигаем.
+                .AddBoolColumn("AutoClosed", false, false)
+                .AddStringColumn("AutoCloseBlockers", -1)
                 .AddIndex(new[] { "ShiftDate" }, name: "IX_ai_day_reviews_date")
                 .Build(),
 
@@ -809,6 +816,27 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("SnappedBy", 128, false)
                 .AddDateTimeColumn("SnappedAt", false)
                 .AddIndex(new[] { "Machine", "ShiftDate" }, name: "IX_part_snap_log_machine_date")
+                .Build(),
+
+            // Журнал исключений из К1, которые ИИ применил сам при автозакрытии суток.
+            // Guid строки без FK — как в part_snap_log: разбор переживает удаление деталей.
+            // Reverted* — отмена аналитиком (исключение снято); сама строка не удаляется.
+            new TableBuilder("ai_auto_exclude_log")
+                .AddIdColumn()
+                .AddStringColumn("Machine", 50, false)
+                .AddSmallDateTimeColumn("ShiftDate", false)
+                .AddGuidColumn("PartGuid", nullable: false)
+                .AddStringColumn("PartName", 255)
+                .AddIntColumn("Setup", false)
+                .AddStringColumn("Order", 50)
+                .AddStringColumn("Reason", -1)
+                .AddStringColumn("AiPromptVersion", 50)
+                .AddStringColumn("ExcludedBy", 128, false)
+                .AddDateTimeColumn("ExcludedAt", false)
+                .AddStringColumn("RevertedBy", 128)
+                .AddDateTimeColumn("RevertedAt")
+                .AddIndex(new[] { "Machine", "ShiftDate" }, name: "IX_ai_auto_exclude_log_machine_date")
+                .AddIndex(new[] { "PartGuid" }, name: "IX_ai_auto_exclude_log_part")
                 .Build(),
 
         };

@@ -203,6 +203,11 @@ public static class HardRuleEvaluator
                     AddSoft($"[{p.PartName}] Оператор сообщает о некорректном нормативе или технологии (мастер дал объяснение — требует верификации)");
             }
 
+            // Правило 2б: оператор просит не учитывать/исключить запись. Исключение из
+            // расчёта — решение СГТ, поэтому всегда HARD, независимо от мастера.
+            if (OperatorAsksToExclude(p.OperatorComment))
+                AddHard($"[{p.PartName}] Оператор просит не учитывать запись: «{p.OperatorComment!.Trim()}»");
+
             // Правило 3: КПД изготовления < 70% без объяснения мастера
             // null (= "б/и") не считается, доработка освобождена.
             // Несерийный станок: правило отключено целиком (см. checkProductionKpd).
@@ -323,6 +328,20 @@ public static class HardRuleEvaluator
             HardFlaggedPartKeys = [.. hardKeys.Distinct()],
             SoftFlagged = softFlagged,
         };
+    }
+
+    private static readonly string[] ExcludeRequestMarkers =
+    [
+        "не учитыв", "не учесть", "исключить", "исключите",
+        "не считать", "не засчитыва", "не засчитать", "не брать в расчёт", "не брать в расчет",
+        "не включать в расч", "не включайте в расч",
+    ];
+
+    private static bool OperatorAsksToExclude(string? comment)
+    {
+        if (string.IsNullOrWhiteSpace(comment)) return false;
+        var l = comment.ToLowerInvariant();
+        return ExcludeRequestMarkers.Any(l.Contains);
     }
 
     private static bool OperatorMentionsNormativeIssue(string? comment)

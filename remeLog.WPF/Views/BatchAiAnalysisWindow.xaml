@@ -44,11 +44,17 @@
                       VerticalAlignment="Center"
                       FontSize="14" Margin="0 0 8 0"
                       IsChecked="{Binding OnlyPending}"/>
-            <CheckBox Content="Автозакрытие пустых"
+            <CheckBox Content="Автозакрытие суток"
                       VerticalAlignment="Center"
                       FontSize="14" Margin="0 0 8 0"
                       IsChecked="{Binding AutoCloseEmpty}"
-                      ToolTip="Отдельный режим: закрыть сутки без записей при наличии обоих отчётов мастера. ИИ не используется."/>
+                      ToolTip="Отдельный режим: ИИ анализирует сутки и сам закрывает однозначные (зелёная клетка календаря, автоисключения из К1). Только сутки с обоими отчётами мастера."/>
+            <CheckBox Content="Тень"
+                      VerticalAlignment="Center"
+                      FontSize="14" Margin="0 0 8 0"
+                      IsChecked="{Binding AutoCloseDryRun}"
+                      Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}"
+                      ToolTip="Режим тени: анализ и решение считаются, но в БД ничего не пишется (ни ревью, ни исключения, ни отметка смен). Сними галку, чтобы закрывать по-настоящему."/>
              <CheckBox Content="Агент"
                        VerticalAlignment="Center"
                        FontSize="14" Margin="0 0 8 0"
@@ -93,11 +99,11 @@
             <Button DockPanel.Dock="Left" Content="История" Width="110" Margin="0 0 12 0"
                     FontSize="14" VerticalAlignment="Center"
                     Command="{Binding ShowAutoCloseHistoryCommand}"
-                    ToolTip="Кто и когда пакетно закрывал пустые сутки"/>
+                    ToolTip="Кто и когда пакетно закрывал сутки"/>
             <!-- Принцип отбора кандидатов -->
             <TextBlock VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
                        Foreground="{DynamicResource Areopag.Text2}"
-                       Text="В списке только пустые сутки: оба отчёта мастера есть, записей нет, день ещё не проверен. Уже зелёные в календаре проверки пропускаются."/>
+                       Text="В списке сутки, где есть оба отчёта мастера и день созрел. Уже зелёные и сутки с решением человека пропускаются; закрывает только то, что ИИ признал однозначным."/>
         </DockPanel>
 
         <ListView ItemsSource="{Binding Items}"

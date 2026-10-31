@@ -116,6 +116,26 @@ namespace remeLog.Models
         /// </summary>
         public string? AiVerdict { get; set; }
 
+        // Автозакрытие без человека (этап 2.3)
+
+        /// <summary> Значение ReviewedBy у суток, закрытых ИИ сам, без участия человека. </summary>
+        public const string AutoReviewer = "ИИ-авто";
+
+        /// <summary> Начало Comment у автозакрытых суток (по нему же строится история автозакрытия). </summary>
+        public const string AutoCloseCommentMarker = "Автозакрытие:";
+
+        /// <summary>
+        /// Сутки закрыл ИИ без человека. Сохранение решения аналитиком (TouchReviewMeta)
+        /// сбрасывает флаг — день снова «человеческий». false и у БД без столбца AutoClosed.
+        /// </summary>
+        public bool AutoClosed { get; set; }
+
+        /// <summary> Причины, по которым сутки не закрыты автоматически (JSON-массив строк). </summary>
+        public string? AutoCloseBlockers { get; set; }
+
+        /// <summary> Закрыто ИИ: по флагу или по автору (строки до появления столбца). </summary>
+        public bool IsAutoClosed => AutoClosed || ReviewedBy == AutoReviewer;
+
         // Вспомогательные свойства
 
         public bool HasAiResult => AiAnalyzedAt.HasValue;
