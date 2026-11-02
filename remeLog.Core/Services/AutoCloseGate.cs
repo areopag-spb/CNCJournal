@@ -83,7 +83,11 @@ namespace remeLog.Core.Services
                 if (r.AutoCloseBlockers.Length > 0) manual.AddRange(r.AutoCloseBlockers);
                 else manual.Add("сервер не подтвердил допуск к автозакрытию");
             }
-            if (r.ShiftReportIssues.Length > 0) manual.Add("есть вопросы к отчёту мастера");
+            // Вопросы к отчёту мастера, которые что-то значат, уже подняли RequiresReview на сервере
+            // (hard/модельные замечания эскалируют). Оставшиеся при «без эскалации» — рекомендательные
+            // (S2 «частичная наладка > порога — рекомендуется отразить в комментарии»), они не блокируют
+            // и у аналитика. Октябрь 2026: 9 суток из 367 блокировались только ими.
+            if (r.EscalatedByShiftReport) manual.Add("есть вопросы к отчёту мастера");
             if (r.FlaggedParts.Length > 0) manual.Add("ИИ отметил проблемные строки");
             if (r.Confidence < options.MinConfidence)
                 manual.Add($"уверенность {r.Confidence:P0} ниже порога {options.MinConfidence:P0}");

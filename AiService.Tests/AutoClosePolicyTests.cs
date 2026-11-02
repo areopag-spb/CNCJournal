@@ -41,4 +41,18 @@ public class AutoClosePolicyTests
         var b = AutoClosePolicy.Blockers(false, false, false, true);
         Assert.Contains(AutoClosePolicy.ModelError, b);
     }
+
+    [Fact]
+    public void AgentRequestedButDisabled_Blocks()
+    {
+        var b = AutoClosePolicy.Blockers(false, false, false, false, agentUnavailable: true);
+        Assert.Contains(AutoClosePolicy.AgentUnavailable, b);
+        Assert.False(AutoClosePolicy.IsEligible(false, b));
+    }
+
+    [Fact]
+    public void AgentNotRequested_DoesNotBlock()
+    {
+        Assert.Empty(AutoClosePolicy.Blockers(false, false, false, false, agentUnavailable: false));
+    }
 }

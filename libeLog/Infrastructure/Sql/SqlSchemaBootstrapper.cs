@@ -839,6 +839,53 @@ namespace libeLog.Infrastructure.Sql
                 .AddIndex(new[] { "PartGuid" }, name: "IX_ai_auto_exclude_log_part")
                 .Build(),
 
+            // История повторных ИИ-оценок суток, у которых уже есть живой вердикт (P3.4):
+            // пакетная/повторная оценка пишет сюда и НЕ меняет ai_day_reviews.Ai* — иначе
+            // вердикт «на момент разбора» теряется, а метрики совпадения искажаются
+            // (пакетная переоценка 25.09.2026 перезаписала живые строки).
+            new TableBuilder("ai_day_reeval")
+                .AddIdColumn()
+                .AddIntColumn("DayReviewId", false)
+                .AddForeignKey("DayReviewId", "ai_day_reviews", "Id",
+                               ForeignKeyAction.Cascade, ForeignKeyAction.Cascade)
+                .AddBoolColumn("AiRequiresReview")
+                .AddDoubleColumn("AiConfidence")
+                .AddStringColumn("AiSignals", -1)
+                .AddStringColumn("AiExplanation", -1)
+                .AddStringColumn("AiModelVersion", 50)
+                .AddStringColumn("AiPromptVersion", 50)
+                .AddBoolColumn("AiThinkingEnabled")
+                .AddDateTimeColumn("EvaluatedAt", false)
+                .AddStringColumn("EvaluatedBy", 128, false)
+                .AddIndex(new[] { "DayReviewId" }, name: "IX_ai_day_reeval_day")
+                .Build(),
+
+            // Журнал каждого решения автозакрытия (в т.ч. в режиме тени, когда в БД
+            // больше ничего не пишется): основа сводки автозакрытия и недельного контроля.
+            // Outcome: Closed / WouldClose / Deferred / Manual / Error. Reasons — JSON-массив
+            // причин. Control* — выборочный контроль аналитиком закрытых ИИ суток:
+            // agree / miss / miss_hard (пропуск hard-класса — критерий остановки, P1.4).
+            new TableBuilder("ai_auto_close_log")
+                .AddIdColumn()
+                .AddStringColumn("Machine", 50, false)
+                .AddSmallDateTimeColumn("ShiftDate", false)
+                .AddDateTimeColumn("RunAt", false)
+                .AddStringColumn("RunBy", 128, false)
+                .AddBoolColumn("DryRun", false, false)
+                .AddStringColumn("Outcome", 20, false)
+                .AddStringColumn("Reasons", -1)
+                .AddBoolColumn("AiRequiresReview")
+                .AddDoubleColumn("AiConfidence")
+                .AddStringColumn("AiPromptVersion", 50)
+                .AddIntColumn("ExclusionsApplied", false, 0)
+                .AddStringColumn("ControlVerdict", 20)
+                .AddStringColumn("ControlBy", 128)
+                .AddDateTimeColumn("ControlAt")
+                .AddStringColumn("ControlComment", -1)
+                .AddIndex(new[] { "ShiftDate" }, name: "IX_ai_auto_close_log_date")
+                .AddIndex(new[] { "Machine", "ShiftDate" }, name: "IX_ai_auto_close_log_machine_date")
+                .Build(),
+
         };
     }
 }

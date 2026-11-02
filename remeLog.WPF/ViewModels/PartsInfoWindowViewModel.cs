@@ -3186,6 +3186,10 @@ namespace remeLog.ViewModels
                         var refreshed = await Database.GetDayReviewAsync(machine, analyzedDate);
                         if (refreshed != null)
                             CurrentDayReview = refreshed;
+                        // У суток уже был вердикт ИИ: он не затирается (P3.4). Новая оценка
+                        // видна в панели и станет живой, если аналитик примет её в диалоге.
+                        if (saveResult.Value == Database.AiAnalysisSaveKind.ReEval)
+                            Status = "Повторная оценка ИИ записана отдельно; прежний вердикт суток не изменён";
                     }
                     else
                     {

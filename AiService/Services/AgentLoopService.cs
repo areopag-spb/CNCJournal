@@ -65,6 +65,15 @@ public class AgentLoopService(
         config.GetValue("Agent:VerifyTemperature", 0.7), 0.0, 2.0);
     public int VerifyRounds => Math.Clamp(config.GetValue("Agent:VerifyRounds", 2), 1, 3);
 
+    /// <summary>
+    /// Один перезапуск цикла при кратковременном сбое (исключение: обрыв связи, Ollama
+    /// перезапускалась). Таймаут, лимит итераций и пустой финал не повторяются — это не
+    /// «моргнуло», а плохой разбор; повтор лишь удвоил бы ожидание клиента.
+    /// </summary>
+    public bool RetryOnFailure => config.GetValue("Agent:RetryOnFailure", true);
+    public TimeSpan RetryDelay => TimeSpan.FromMilliseconds(
+        Math.Clamp(config.GetValue("Agent:RetryDelayMs", 2000), 0, 30000));
+
     public async Task<AgentLoopOutcome> AnalyzeAsync(
         AnalyzeRequest request,
         HardRuleResult hardRules,
@@ -72,6 +81,40 @@ public class AgentLoopService(
         CancellationToken ct,
         IProgress<string>? progress = null,
         IProgress<string>? thinkingProgress = null)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var first = await AnalyzeOnceAsync(request, hardRules, shiftRules, ct, progress, thinkingProgress);
+
+        // Повторяем, только если первая попытка упала быстро: вместе с ней не должны
+        // вылезти за HTTP-таймаут клиента (300 с при таймауте цикла 180 с → ≤ 1,5×).
+        if (!RetryOnFailure || !IsTransientFailure(first.Trace)
+            || ct.IsCancellationRequested || sw.Elapsed >= Timeout / 2)
+            return first;
+
+        logger.LogWarning("Агент {Machine} {Date}: кратковременный сбой ({Reason}), повтор",
+            request.Machine, request.ShiftDate, first.Trace.FallbackReason);
+        progress?.Report("↻ Сбой агента, повторяю...");
+        await Task.Delay(RetryDelay, ct);
+
+        var retry = await AnalyzeOnceAsync(request, hardRules, shiftRules, ct, progress, thinkingProgress);
+        retry.Trace.Retries = 1;
+        if (retry.Trace.FellBack)
+            retry.Trace.FallbackReason =
+                $"{retry.Trace.FallbackReason} (после повтора; первая попытка: {first.Trace.FallbackReason})";
+        return retry;
+    }
+
+    /// <summary> Исключение в цикле («Сбой: …») — единственный повторяемый вид отказа. </summary>
+    private static bool IsTransientFailure(AgentTrace trace) =>
+        trace.FellBack && trace.FallbackReason?.StartsWith("Сбой:", StringComparison.Ordinal) == true;
+
+    private async Task<AgentLoopOutcome> AnalyzeOnceAsync(
+        AnalyzeRequest request,
+        HardRuleResult hardRules,
+        ShiftReportRuleResult shiftRules,
+        CancellationToken ct,
+        IProgress<string>? progress,
+        IProgress<string>? thinkingProgress)
     {
         PromptBuildResult prompt;
         try
@@ -118,11 +161,37 @@ public class AgentLoopService(
                     thinkingProgress: thinkingProgress);
                 trace.ThinkingChars += round.Thinking?.Length ?? 0;
                 AppendExcerpt(trace, i, round.Thinking);
+                if (!string.IsNullOrWhiteSpace(round.Thinking))
+                {
+                    var thought = round.Thinking.Trim();
+                    trace.ThinkingTail = thought.Length <= ThinkingTailCap ? thought : thought[^ThinkingTailCap..];
+                }
 
                 if (round.ToolCalls.Count == 0)
                 {
                     if (string.IsNullOrWhiteSpace(round.Content))
                         return new AgentLoopOutcome(null, Fail(trace, "Пустой финал без tool_calls"));
+
+                    // Вердикт без запроса смысла причин там, где он решает дело: один раз
+                    // просим запросить (qwen3:14b сам не вызывал tools ни разу за 367 суток).
+                    if (!trace.ContextNudged && trace.Rounds.Count == 0 && i < MaxIterations)
+                    {
+                        var needed = ContextNudgeReasons(request, hardRules, shiftRules);
+                        if (needed.Count > 0)
+                        {
+                            trace.ContextNudged = true;
+                            progress?.Report("↻ Прошу запросить смысл причин перед вердиктом.");
+                            messages.Add(new ChatMessage { Role = "assistant", Content = round.Content });
+                            messages.Add(new ChatMessage
+                            {
+                                Role = "user",
+                                Content = "Перед вердиктом нужен смысл причин, на которых держится объяснение сигналов: "
+                                    + string.Join("; ", needed.Select(n => $"«{n.Reason}» ({n.Category})"))
+                                    + ". Вызови get_reason_semantics по ним и верни JSON вердикта заново.",
+                            });
+                            continue;
+                        }
+                    }
                     progress?.Report("✓ Вердикт получен.");
                     var outcome = new AgentLoopOutcome(round.Content, trace);
                     trace.BaseRequiresReview = TryGetRequiresReview(round.Content);
@@ -287,8 +356,6 @@ public class AgentLoopService(
                 ["кпдИзготовления"] = noProd ? null : Math.Round(p.ProductionRatio!.Value, 4),
                 ["изготовленияНеБыло"] = noProd,
                 ["готовоШт"] = p.FinishedCount,
-                ["планНаладки"] = p.SetupTimePlan,
-                ["фактНаладки"] = p.SetupTimeFact,
                 ["норматив"] = p.SingleProductionTimePlan,
                 ["машВремя"] = p.MachiningTime,
                 // Частичная наладка (куски одной наладки, идут через механизм простоев).
@@ -298,6 +365,8 @@ public class AgentLoopService(
                 // частичная 3 мин во второй строке, модель предложила exclude по первой).
                 ["частичнаяНаладкиМин"] = p.PartialSetup,
             };
+            d["планНаладки"] = p.SetupTimePlan;
+            if (!HidesSetupFact(p, noSetup)) d["фактНаладки"] = p.SetupTimeFact;
             if (nonSerial) d["изготовлениеНеОценивается"] = true;
             AddText(d, "причинаОтклоненияВНаладке", p.MasterSetupComment, 200);
             AddText(d, "причинаОтклоненияВИзготовлении", p.MasterMachiningComment, 200);
@@ -315,6 +384,44 @@ public class AgentLoopService(
         return JsonSerializer.Serialize(new { parts = list }, AgentTools.JsonOptions);
     }
 
+    /// <summary>
+    /// Наладки не было, а норматив есть: пара «план>0 + факт=0» — приманка для модели
+    /// (в теневом прогоне октября она в 4,4% суток писала «отсутствие наладки при наличии
+    /// заказа», хотя промпт это запрещает). Факт не передаём, план оставляем: повтор 02.11
+    /// показал, что без плана модель пишет «отсутствие плана наладки при наличии заказа».
+    /// </summary>
+    public static bool HidesSetupFact(PartContext p, bool noSetup) => noSetup && p.SetupTimePlan > 0;
+
+    /// <summary>
+    /// Причины, смысл которых модель обязана запросить до вердикта: на деталях с сигналами
+    /// (клиентскими) есть причина отклонения, и вердикт решает модель, а не код. Без
+    /// сигналов причина ничего не объясняет, при hard-эскалации ответ предрешён.
+    /// Пары (причина, категория setup|machining), не более MaxNudgeReasons.
+    /// </summary>
+    public static IReadOnlyList<(string Reason, string Category)> ContextNudgeReasons(
+        AnalyzeRequest request, HardRuleResult hardRules, ShiftReportRuleResult shiftRules)
+    {
+        var result = new List<(string, string)>();
+        if (hardRules.MustEscalate || shiftRules.MustEscalate) return result;
+        var nonSerial = request.IsSerialMachine == false;
+        foreach (var p in request.Parts)
+        {
+            if (p.Signals.Count == 0) continue;
+            AddNudge(result, p.MasterSetupComment, "setup");
+            if (!nonSerial) AddNudge(result, p.MasterMachiningComment, "machining");
+        }
+        return result;
+    }
+
+    private const int MaxNudgeReasons = 4;
+
+    private static void AddNudge(List<(string, string)> list, string reason, string category)
+    {
+        var r = reason?.Trim();
+        if (string.IsNullOrEmpty(r) || list.Count >= MaxNudgeReasons) return;
+        if (!list.Contains((r, category))) list.Add((r, category));
+    }
+
     private static void AddText(Dictionary<string, object?> d, string key, string value, int max)
     {
         if (!string.IsNullOrWhiteSpace(value)) d[key] = Clip(value, max);
@@ -322,6 +429,9 @@ public class AgentLoopService(
 
     /// <summary> Первые символы рассуждений по раундам (см. AgentTrace.ThinkingExcerpt). </summary>
     public const int ThinkingExcerptCap = 3000;
+
+    /// <summary> Сколько символов конца рассуждений хранить для проверки рассинхрона (см. AgentTrace.ThinkingTail). </summary>
+    public const int ThinkingTailCap = 1800;
 
     private static void AppendExcerpt(AgentTrace trace, int round, string? thinking)
     {
@@ -415,7 +525,7 @@ public class AgentLoopService(
             sb.AppendLine(pv.NeedsModel
                 ? $" • Смена {pv.Shift} — ТВОЯ ПРОВЕРКА: {pv.Note}"
                 : $" • Смена {pv.Shift} — СИСТЕМА: вопросов нет ({pv.Note})");
-        sb.AppendLine("Верни JSON вердикта. Фактологию (смысл причин, историю, отчёт мастера) бери ТОЛЬКО через tools.");
+        sb.AppendLine("Верни JSON вердикта. Смысл причин и историю детали запрашивай через tools, когда без них не решить (условия — в системном промпте); данные дня и отчёт мастера уже выше.");
         return sb.ToString();
     }
 }

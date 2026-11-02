@@ -26,6 +26,8 @@ namespace remeLog.Core.Services
         Task<DbResult<int>> SaveExcludeLogAsync(IReadOnlyCollection<AutoExcludeLogEntry> entries);
         Task<DbResult<bool>> RevertExcludeLogAsync(
             string machine, DateTime date, IReadOnlyCollection<Guid> partGuids, string by);
+        /// <summary> Журнал решения автозакрытия. Не бросает: сбой журнала не должен ломать закрытие. </summary>
+        Task SaveRunLogAsync(AutoCloseLogEntry entry);
     }
 
     /// <summary> Реализация поверх статического <c>Database</c>. </summary>
@@ -63,6 +65,9 @@ namespace remeLog.Core.Services
         public Task<DbResult<bool>> RevertExcludeLogAsync(
             string machine, DateTime date, IReadOnlyCollection<Guid> partGuids, string by) =>
             Database.RevertAutoExcludeLogAsync(machine, date, partGuids, by);
+
+        public async Task SaveRunLogAsync(AutoCloseLogEntry entry) =>
+            await Database.SaveAutoCloseLogAsync(entry);
     }
 
     public sealed class AutoCloseRunOptions
@@ -75,6 +80,9 @@ namespace remeLog.Core.Services
 
         /// <summary> Предел закрытий (и «закрыл бы» в тени) за один экземпляр исполнителя. </summary>
         public int MaxCloses { get; init; } = 100;
+
+        /// <summary> Кто запустил — в журнал решений. </summary>
+        public string RunBy { get; init; } = Environment.UserName;
     }
 
     public enum AutoCloseStatus
@@ -147,6 +155,45 @@ namespace remeLog.Core.Services
         public async Task<AutoCloseResult> TryCloseAsync(
             string machine, DateTime date, AiAnalysisResult result, IReadOnlyList<Part> analyzedParts,
             string? aiModel, bool thinkingEnabled, CancellationToken ct = default)
+        {
+            var outcome = await DecideAsync(machine, date, result, analyzedParts, aiModel, thinkingEnabled, ct);
+            if (outcome.Status is not (AutoCloseStatus.Disabled or AutoCloseStatus.LimitReached))
+            {
+                try
+                {
+                    await _store.SaveRunLogAsync(new AutoCloseLogEntry
+                    {
+                        Machine = machine,
+                        ShiftDate = date.Date,
+                        RunAt = _clock(),
+                        RunBy = _run.RunBy,
+                        DryRun = _run.DryRun,
+                        Outcome = outcome.Status switch
+                        {
+                            AutoCloseStatus.Closed => AutoCloseLogEntry.OutcomeClosed,
+                            AutoCloseStatus.WouldClose => AutoCloseLogEntry.OutcomeWouldClose,
+                            AutoCloseStatus.Deferred => AutoCloseLogEntry.OutcomeDeferred,
+                            AutoCloseStatus.Manual => AutoCloseLogEntry.OutcomeManual,
+                            _ => AutoCloseLogEntry.OutcomeError,
+                        },
+                        Reasons = outcome.Reasons,
+                        AiRequiresReview = result.RequiresReview,
+                        AiConfidence = result.Confidence,
+                        AiPromptVersion = result.PromptVersion,
+                        ExclusionsApplied = outcome.ExclusionsApplied,
+                    });
+                }
+                catch
+                {
+                    // Журнал вспомогательный: его сбой не должен менять исход закрытия.
+                }
+            }
+            return outcome;
+        }
+
+        private async Task<AutoCloseResult> DecideAsync(
+            string machine, DateTime date, AiAnalysisResult result, IReadOnlyList<Part> analyzedParts,
+            string? aiModel, bool thinkingEnabled, CancellationToken ct)
         {
             if (!_run.Enabled) return new(AutoCloseStatus.Disabled, new[] { "автозакрытие выключено" });
             if (_decided >= _run.MaxCloses)

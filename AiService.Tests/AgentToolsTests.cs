@@ -224,8 +224,11 @@ public class AgentToolsTests
         var r = AgentTools.Execute(Request(BnPart()), "get_normatives",
             """{"partName":"Корпус"}""");
         using var doc = JsonDocument.Parse(r);
+        // BnPart — б/н с планом 114: факт скрыт так же, как в JSON деталей, план виден.
         Assert.Equal(114, doc.RootElement.GetProperty("планНаладки").GetDouble());
+        Assert.False(doc.RootElement.TryGetProperty("фактНаладки", out _));
         Assert.True(doc.RootElement.GetProperty("естьЗаказ").GetBoolean());
+        Assert.True(doc.RootElement.TryGetProperty("норматив", out _));
     }
 
     [Fact]

@@ -140,27 +140,58 @@ namespace remeLog.Infrastructure
             }
         }
 
-        public static async Task<DbResult<bool>> SaveAiAnalysisAsync(
+        /// <summary> Куда попала ИИ-оценка суток при <see cref="SaveAiAnalysisAsync"/>. </summary>
+        public enum AiAnalysisSaveKind
+        {
+            /// <summary> У суток ещё не было вердикта ИИ — записан в ai_day_reviews. </summary>
+            Live,
+            /// <summary> Живой вердикт уже есть — оценка легла в историю ai_day_reeval, вердикт не тронут. </summary>
+            ReEval,
+        }
+
+        /// <summary>
+        /// Запись ИИ-оценки суток (P3.4): живой вердикт неизменяем. Если у суток уже есть
+        /// AiAnalyzedAt — оценка пишется только в историю <c>ai_day_reeval</c> (нет таблицы —
+        /// ошибка, а НЕ перезапись); если вердикта не было (решение без ИИ) — как раньше,
+        /// в ai_day_reviews. Принятый аналитиком вердикт попадает в ai_day_reviews другим путём
+        /// (<see cref="SaveDayReviewAsync"/> с AiResult) — это осознанное решение человека.
+        /// </summary>
+        public const string SaveAiAnalysisSql = @"
+        IF EXISTS (SELECT 1 FROM ai_day_reviews WHERE Id = @Id AND AiAnalyzedAt IS NOT NULL)
+        BEGIN
+            INSERT INTO ai_day_reeval
+                (DayReviewId, AiRequiresReview, AiConfidence, AiSignals, AiExplanation,
+                 AiModelVersion, AiPromptVersion, AiThinkingEnabled, EvaluatedAt, EvaluatedBy)
+            VALUES
+                (@Id, @AiRequiresReview, @AiConfidence, @AiSignals, @AiExplanation,
+                 @AiModelVersion, @AiPromptVersion, @AiThinkingEnabled, @AiAnalyzedAt, @EvaluatedBy);
+            SELECT 1;
+        END
+        ELSE
+        BEGIN
+            UPDATE ai_day_reviews
+            SET AiRequiresReview = @AiRequiresReview,
+                AiThinkingEnabled = @AiThinkingEnabled,
+                AiConfidence     = @AiConfidence,
+                AiSignals        = @AiSignals,
+                AiExplanation    = @AiExplanation,
+                AiModelVersion   = @AiModelVersion,
+                AiPromptVersion   = @AiPromptVersion,
+                AiAnalyzedAt     = @AiAnalyzedAt,
+                AiFeedback       = NULL
+            WHERE Id = @Id AND AiAnalyzedAt IS NULL;
+            SELECT 0;
+        END";
+
+        public static async Task<DbResult<AiAnalysisSaveKind>> SaveAiAnalysisAsync(
             int dayReviewId, AiAnalysisResult result, string modelVersion, bool thinkingEnabled)
         {
-            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<bool>.Ok(true));
-            const string sql = @"
-        UPDATE ai_day_reviews
-        SET AiRequiresReview = @AiRequiresReview,
-            AiThinkingEnabled = @AiThinkingEnabled,
-            AiConfidence     = @AiConfidence,
-            AiSignals        = @AiSignals,
-            AiExplanation    = @AiExplanation,
-            AiModelVersion   = @AiModelVersion,
-            AiPromptVersion   = @AiPromptVersion,
-            AiAnalyzedAt     = @AiAnalyzedAt,
-            AiFeedback       = NULL
-        WHERE Id = @Id";
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<AiAnalysisSaveKind>.Ok(AiAnalysisSaveKind.Live));
             try
             {
                 await using var conn = new SqlConnection(DomainSettings.ConnectionString);
                 await conn.OpenAsync();
-                await using var cmd = new SqlCommand(sql, conn);
+                await using var cmd = new SqlCommand(SaveAiAnalysisSql, conn);
                 cmd.Parameters.AddWithValue("@Id", dayReviewId);
                 cmd.Parameters.AddWithValue("@AiRequiresReview", result.RequiresReview);
                 cmd.Parameters.AddWithValue("@AiThinkingEnabled", thinkingEnabled);
@@ -172,13 +203,16 @@ namespace remeLog.Infrastructure
                 cmd.Parameters.AddWithValue("@AiPromptVersion",
                     (object?)result.PromptVersion ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@AiAnalyzedAt", DateTime.Now);
-                await cmd.ExecuteNonQueryAsync();
-                return DbResult<bool>.Ok(true);
+                cmd.Parameters.AddWithValue("@EvaluatedBy", Environment.UserName);
+                var kind = Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 1
+                    ? AiAnalysisSaveKind.ReEval
+                    : AiAnalysisSaveKind.Live;
+                return DbResult<AiAnalysisSaveKind>.Ok(kind);
             }
             catch (Exception ex)
             {
                 Log.WriteError(ex,"SaveAiAnalysisAsync");
-                return DbResult<bool>.FailWithError(ex.Message);
+                return DbResult<AiAnalysisSaveKind>.FailWithError(ex.Message);
             }
         }
 
@@ -556,6 +590,132 @@ namespace remeLog.Infrastructure
                 Log.WriteError(ex, "GetAutoExcludeLogAsync");
             }
             return result;
+        }
+
+        /// <summary> Пишет решение автозакрытия в журнал. Нет таблицы/сбой — Fail (вызывающий не прерывается). </summary>
+        public static async Task<DbResult<int>> SaveAutoCloseLogAsync(AutoCloseLogEntry e)
+        {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<int>.Ok(0));
+            const string sql = @"
+                INSERT INTO ai_auto_close_log
+                    (Machine, ShiftDate, RunAt, RunBy, DryRun, Outcome, Reasons,
+                     AiRequiresReview, AiConfidence, AiPromptVersion, ExclusionsApplied)
+                VALUES
+                    (@Machine, @ShiftDate, @RunAt, @RunBy, @DryRun, @Outcome, @Reasons,
+                     @AiRequiresReview, @AiConfidence, @AiPromptVersion, @ExclusionsApplied);
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Machine", e.Machine);
+                cmd.Parameters.AddWithValue("@ShiftDate", e.ShiftDate.Date);
+                cmd.Parameters.AddWithValue("@RunAt", e.RunAt);
+                cmd.Parameters.AddWithValue("@RunBy", e.RunBy);
+                cmd.Parameters.AddWithValue("@DryRun", e.DryRun);
+                cmd.Parameters.AddWithValue("@Outcome", e.Outcome);
+                cmd.Parameters.AddWithValue("@Reasons",
+                    e.Reasons.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(e.Reasons, _jsonOpts));
+                cmd.Parameters.AddWithValue("@AiRequiresReview", (object?)e.AiRequiresReview ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@AiConfidence", (object?)e.AiConfidence ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@AiPromptVersion", (object?)e.AiPromptVersion ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ExclusionsApplied", e.ExclusionsApplied);
+                var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                e.Id = id;
+                return DbResult<int>.Ok(id);
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "SaveAutoCloseLogAsync");
+                return DbResult<int>.FailWithError(ex.Message);
+            }
+        }
+
+        /// <summary> Журнал автозакрытия за период (по дате суток). Нет таблицы — пусто. </summary>
+        public static async Task<List<AutoCloseLogEntry>> GetAutoCloseLogAsync(DateTime from, DateTime to)
+        {
+            var result = new List<AutoCloseLogEntry>();
+            if (DomainSettings.DemoMode) return result;
+            const string sql = @"
+                SELECT Id, Machine, ShiftDate, RunAt, RunBy, DryRun, Outcome, Reasons,
+                       AiRequiresReview, AiConfidence, AiPromptVersion, ExclusionsApplied,
+                       ControlVerdict, ControlBy, ControlAt, ControlComment
+                FROM ai_auto_close_log
+                WHERE ShiftDate BETWEEN @From AND @To
+                ORDER BY ShiftDate, Machine, RunAt, Id";
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@From", from.Date);
+                cmd.Parameters.AddWithValue("@To", to.Date);
+                await using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    string[] reasons = Array.Empty<string>();
+                    if (!r.IsDBNull(7))
+                    {
+                        try { reasons = JsonSerializer.Deserialize<string[]>(r.GetString(7)) ?? reasons; }
+                        catch { reasons = new[] { r.GetString(7) }; }
+                    }
+                    result.Add(new AutoCloseLogEntry
+                    {
+                        Id = r.GetInt32(0),
+                        Machine = r.GetString(1),
+                        ShiftDate = r.GetDateTime(2),
+                        RunAt = r.GetDateTime(3),
+                        RunBy = r.GetString(4),
+                        DryRun = r.GetBoolean(5),
+                        Outcome = r.GetString(6),
+                        Reasons = reasons,
+                        AiRequiresReview = r.IsDBNull(8) ? null : r.GetBoolean(8),
+                        AiConfidence = r.IsDBNull(9) ? null : r.GetDouble(9),
+                        AiPromptVersion = r.IsDBNull(10) ? null : r.GetString(10),
+                        ExclusionsApplied = r.GetInt32(11),
+                        ControlVerdict = r.IsDBNull(12) ? null : r.GetString(12),
+                        ControlBy = r.IsDBNull(13) ? null : r.GetString(13),
+                        ControlAt = r.IsDBNull(14) ? null : r.GetDateTime(14),
+                        ControlComment = r.IsDBNull(15) ? null : r.GetString(15),
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                // Таблицы может не быть (БД не обновлена) — для чтения это «журнала нет».
+                Log.WriteError(ex, "GetAutoCloseLogAsync");
+            }
+            return result;
+        }
+
+        /// <summary> Записывает результат выборочного контроля закрытых ИИ суток. </summary>
+        public static async Task<DbResult<bool>> SetAutoCloseControlAsync(
+            int logId, string verdict, string by, string? comment)
+        {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<bool>.Ok(true));
+            const string sql = @"
+                UPDATE ai_auto_close_log
+                SET ControlVerdict = @Verdict, ControlBy = @By, ControlAt = @At, ControlComment = @Comment
+                WHERE Id = @Id";
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Id", logId);
+                cmd.Parameters.AddWithValue("@Verdict", verdict);
+                cmd.Parameters.AddWithValue("@By", by);
+                cmd.Parameters.AddWithValue("@At", DateTime.Now);
+                cmd.Parameters.AddWithValue("@Comment", string.IsNullOrWhiteSpace(comment) ? DBNull.Value : comment);
+                await cmd.ExecuteNonQueryAsync();
+                return DbResult<bool>.Ok(true);
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "SetAutoCloseControlAsync");
+                return DbResult<bool>.FailWithError(ex.Message);
+            }
         }
 
         /// <summary>

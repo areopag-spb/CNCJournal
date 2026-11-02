@@ -156,6 +156,7 @@ namespace remeLog.ViewModels
         public ICommand HideAllMachinesCommand { get; }
         public ICommand InvertMachinesCommand { get; }
         public ICommand ShowAutoCloseHistoryCommand { get; }
+        public ICommand ShowAutoCloseSummaryCommand { get; }
 
         /// <summary> Фильтр по станкам для режима автозакрытия (общий контрол,
         /// как в календаре проверки; выбор запоминается). </summary>
@@ -187,6 +188,11 @@ namespace remeLog.ViewModels
                 var window = new AutoCloseHistoryWindow { Owner = Application.Current.MainWindow };
                 window.Show();
             }, _ => !IsRunning);
+            ShowAutoCloseSummaryCommand = new LambdaCommand(_ =>
+            {
+                var window = new AutoCloseSummaryWindow { Owner = Application.Current.MainWindow };
+                window.Show();
+            });
             // ИИ может упасть/подняться прямо при открытом окне — пересчитать доступность Старта.
             AiHealthMonitor.Instance.PropertyChanged += (_, e) =>
             {
@@ -478,12 +484,16 @@ namespace remeLog.ViewModels
                         }
                         else
                         {
-                            // Агентские вердикты пишутся как штатные (теневой режим снят).
-                            await Database.SaveAiAnalysisAsync(
+                            // Живой вердикт суток неизменяем: у суток с вердиктом ИИ повторная
+                            // оценка пишется отдельно (ai_day_reeval), а не поверх него (P3.4).
+                            var saved = await Database.SaveAiAnalysisAsync(
                                 item.DayReviewId, result, AppSettings.AiModel, ThinkingEnabled);
 
                             item.State = BatchItemState.Done;
-                            item.Summary = BuildResultSummary(result) + (ThinkingEnabled ? " (агент)" : "");
+                            item.Summary = BuildResultSummary(result) + (ThinkingEnabled ? " (агент)" : "")
+                                + (!saved.IsOk ? $" — НЕ записано: {saved.Error}"
+                                    : saved.Value == Database.AiAnalysisSaveKind.ReEval
+                                        ? " — повторная оценка, живой вердикт не тронут" : "");
                             FillItemVerdict(item, result);
                         }
                     }

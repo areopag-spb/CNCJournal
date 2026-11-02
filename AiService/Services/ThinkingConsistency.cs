@@ -43,10 +43,35 @@ public static class ThinkingConsistency
             {
                 var at = tail.IndexOf(marker, from, StringComparison.OrdinalIgnoreCase);
                 if (at < 0) break;
-                if (!IsNegated(tail, at)) return true;
+                if (!IsNegated(tail, at) && !IsHedged(tail, at)) return true;
                 from = at + marker.Length;
             }
         }
+        return false;
+    }
+
+    // Слова условия/осторожности в том же предложении: «если …, тогда требуется
+    // эскалация», «возможно, потребуется эскалация», «в противном случае — эскалация».
+    // Это рассматриваемая гипотеза, а не вывод. Живой разбор октября 2026 (12 суток
+    // «нестабильного вывода»): все 12 — недописанное рассуждение, оборванное на
+    // условной фразе, и итоговый JSON False; настоящий вывод («Итого: … требует
+    // эскалации») условных слов не содержит.
+    private static readonly string[] HedgeWords =
+    [
+        "если", "возможно", "вероятно", "в противном случае", "иначе", "тогда",
+        "потребуется", "может быть", "может потребоваться", "либо",
+    ];
+
+    private static readonly char[] SentenceEnds = ['.', '!', '?', '\n'];
+
+    private static bool IsHedged(string text, int markerAt)
+    {
+        var start = text.LastIndexOfAny(SentenceEnds, Math.Max(0, markerAt - 1)) + 1;
+        var end = text.IndexOfAny(SentenceEnds, markerAt);
+        if (end < 0) end = text.Length;
+        var sentence = text[start..end].ToLowerInvariant();
+        foreach (var word in HedgeWords)
+            if (sentence.Contains(word)) return true;
         return false;
     }
 

@@ -83,6 +83,84 @@ public class AgentLoopServiceTests
         Assert.EndsWith("@agent", outcome.Trace.PromptVersion);
     }
 
+    private static AnalyzeRequest RequestWithSignal()
+    {
+        var req = Request();
+        req.Parts[0].Signals = ["КПД наладки 45% без объяснения"];
+        return req;
+    }
+
+    [Fact]
+    public async Task VerdictWithoutTools_OnSignalWithReason_IsNudgedOnce()
+    {
+        var calls = 0;
+        var stub = new StubChat(_ => ++calls switch
+        {
+            1 => new ChatResult { Content = """{"requires_review":false}""" },
+            2 => new ChatResult
+            {
+                ToolCalls =
+                [
+                    new AgentToolCall
+                    {
+                        Id = "c1", Name = "get_reason_semantics",
+                        Arguments = """{"reason":"Освоение","category":"setup"}""",
+                    },
+                ],
+            },
+            _ => new ChatResult { Content = """{"requires_review":true}""" },
+        });
+
+        var outcome = await Service(stub).AnalyzeAsync(RequestWithSignal(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Equal("""{"requires_review":true}""", outcome.FinalJson);
+        Assert.True(outcome.Trace.ContextNudged);
+        Assert.Single(outcome.Trace.Rounds);
+        // SeenMessages хранит ссылку на общий список: толчок — последняя user-реплика.
+        var nudge = stub.SeenMessages[1].Last(m => m.Role == "user");
+        Assert.Contains("«Освоение» (setup)", nudge.Content);
+    }
+
+    [Fact]
+    public async Task Nudge_IsOnlyOnce_SecondVerdictAccepted()
+    {
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+
+        var outcome = await Service(stub).AnalyzeAsync(RequestWithSignal(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Equal(2, stub.Calls);
+        Assert.True(outcome.Trace.ContextNudged);
+        Assert.Equal("""{"requires_review":false}""", outcome.FinalJson);
+        Assert.False(outcome.Trace.FellBack);
+    }
+
+    [Fact]
+    public async Task NoNudge_WithoutSignals_OrWhenHardDecided()
+    {
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        var noSignals = await Service(stub).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+        Assert.Equal(1, stub.Calls);
+        Assert.False(noSignals.Trace.ContextNudged);
+
+        var hardStub = new StubChat(_ => new ChatResult { Content = """{"requires_review":true}""" });
+        var hard = new HardRuleResult(["[Д] hard"], []);
+        var decided = await Service(hardStub).AnalyzeAsync(RequestWithSignal(), hard, NoShift, CancellationToken.None);
+        Assert.Equal(1, hardStub.Calls);
+        Assert.False(decided.Trace.ContextNudged);
+    }
+
+    [Fact]
+    public void NudgeReasons_NonSerial_SkipsMachining()
+    {
+        var req = RequestWithSignal();
+        req.IsSerialMachine = false;
+        req.Parts[0].MasterMachiningComment = "Некорректные нормативы";
+
+        var reasons = AgentLoopService.ContextNudgeReasons(req, NoHard, NoShift);
+
+        Assert.Equal([("Освоение", "setup")], reasons);
+    }
+
     [Fact]
     public async Task OneToolRound_ExecutesAndReturnsFinal()
     {
@@ -441,5 +519,97 @@ public class AgentLoopServiceTests
         Assert.Contains(@"""кпдНаладки"":null", user);
         Assert.DoesNotContain("б/н", user);
     }
-}
 
+    // ── P2.3: один повтор после кратковременного сбоя ──
+
+    private static IConfiguration FastRetry(params (string Key, string Value)[] extra) =>
+        Config([("Agent:RetryDelayMs", "0"), .. extra]);
+
+    [Fact]
+    public async Task TransientFailure_RetriedOnce_ThenSucceeds()
+    {
+        var calls = 0;
+        var stub = new StubChat(_ => ++calls == 1
+            ? throw new HttpRequestException("обрыв связи")
+            : new ChatResult { Content = """{"requires_review":false}""" });
+
+        var outcome = await Service(stub, FastRetry()).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.False(outcome.Trace.FellBack);
+        Assert.Equal("""{"requires_review":false}""", outcome.FinalJson);
+        Assert.Equal(1, outcome.Trace.Retries);
+        Assert.Equal(2, stub.Calls);
+    }
+
+    [Fact]
+    public async Task TransientFailure_SecondFailure_FallsBackWithBothReasons()
+    {
+        var stub = new StubChat(_ => throw new HttpRequestException("обрыв связи"));
+
+        var outcome = await Service(stub, FastRetry()).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.True(outcome.Trace.FellBack);
+        Assert.Equal(1, outcome.Trace.Retries);
+        Assert.Equal(2, stub.Calls);
+        Assert.Contains("после повтора", outcome.Trace.FallbackReason);
+        Assert.Contains("первая попытка", outcome.Trace.FallbackReason);
+    }
+
+    [Fact]
+    public async Task IterationLimit_NotRetried()
+    {
+        var stub = new StubChat(_ => new ChatResult
+        {
+            Content = "",
+            ToolCalls = [new AgentToolCall { Id = "c", Name = "get_reason_semantics", Arguments = """{"reason":"Освоение","category":"setup"}""" }],
+        });
+
+        var outcome = await Service(stub, FastRetry(("Agent:MaxIterations", "2")))
+            .AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.True(outcome.Trace.FellBack);
+        Assert.Equal(0, outcome.Trace.Retries);
+        Assert.Equal(2, stub.Calls);
+    }
+
+    [Fact]
+    public async Task EmptyFinal_NotRetried()
+    {
+        var stub = new StubChat(_ => new ChatResult { Content = "" });
+
+        var outcome = await Service(stub, FastRetry()).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.True(outcome.Trace.FellBack);
+        Assert.Equal(0, outcome.Trace.Retries);
+        Assert.Equal(1, stub.Calls);
+    }
+
+    [Fact]
+    public async Task RetryDisabledByConfig_NoSecondAttempt()
+    {
+        var stub = new StubChat(_ => throw new HttpRequestException("обрыв связи"));
+
+        var outcome = await Service(stub, FastRetry(("Agent:RetryOnFailure", "false")))
+            .AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.True(outcome.Trace.FellBack);
+        Assert.Equal(0, outcome.Trace.Retries);
+        Assert.Equal(1, stub.Calls);
+    }
+
+    [Fact]
+    public async Task Cancelled_NotRetried()
+    {
+        using var cts = new CancellationTokenSource();
+        var stub = new StubChat(_ =>
+        {
+            cts.Cancel();
+            throw new HttpRequestException("обрыв связи");
+        });
+
+        var outcome = await Service(stub, FastRetry()).AnalyzeAsync(Request(), NoHard, NoShift, cts.Token);
+
+        Assert.True(outcome.Trace.FellBack);
+        Assert.Equal(1, stub.Calls);
+    }
+}

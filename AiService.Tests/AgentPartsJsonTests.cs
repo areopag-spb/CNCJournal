@@ -87,6 +87,37 @@ public class AgentPartsJsonTests
     }
 
     [Fact]
+    public void NoSetupWithPlan_FactHidden_PlanKept()
+    {
+        // Октябрь 2026: пара «план>0 + факт=0» при б/н провоцировала «отсутствие наладки».
+        var parts = Render(true, Part("Кольцо", "З1", null, 86));
+
+        // План остаётся: без него модель читает «плана нет» и пишет «отсутствие плана наладки».
+        Assert.Equal(86, parts[0].GetProperty("планНаладки").GetDouble());
+        Assert.False(parts[0].TryGetProperty("фактНаладки", out _));
+        Assert.True(parts[0].GetProperty("наладкиНеБыло").GetBoolean());
+    }
+
+    [Fact]
+    public void NoSetupWithZeroPlan_FactKept()
+    {
+        // План=0 при заказе — отдельная аномалия «норматив отсутствует», её скрывать нельзя.
+        var parts = Render(true, Part("Кольцо", "З1", null, 0));
+
+        Assert.Equal(0, parts[0].GetProperty("планНаладки").GetDouble());
+        Assert.Equal(0, parts[0].GetProperty("фактНаладки").GetDouble());
+    }
+
+    [Fact]
+    public void SetupHappened_FactKept()
+    {
+        var parts = Render(true, Part("Кольцо", "З1", 0.45, 86));
+
+        Assert.Equal(86, parts[0].GetProperty("планНаладки").GetDouble());
+        Assert.Equal(86, parts[0].GetProperty("фактНаладки").GetDouble());
+    }
+
+    [Fact]
     public void PartialSetupMinutes_VisiblePerRow()
     {
         // Кейс 24.09.2026, SKT21 «Гайка нажимная…»: частичная 3 мин была во

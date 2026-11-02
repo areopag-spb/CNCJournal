@@ -136,7 +136,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             (modelShiftIssues, var droppedUnscoped) =
                 ShiftReportRuleEvaluator.DropUnscopedShiftIssues(modelShiftIssues);
             MergeAutoExcludes(llmResult, mastering.AutoExcludes);
-            var consistencyConflict = CheckThinkingConsistency(request, agentTrace?.ThinkingExcerpt ?? thinkCapture.ToString(), llmResult);
+            var consistencyConflict = CheckThinkingConsistency(request, agentTrace?.ThinkingTail ?? agentTrace?.ThinkingExcerpt ?? thinkCapture.ToString(), llmResult);
             var notDowngraded = SoftSignalMatcher.GetNotDowngraded(
                 hardRules.SoftSignals, llmResult.DowngradedSignals);
 
@@ -283,7 +283,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
                 resetEffective, shiftRules, modelShiftIssues);
             result.EscalatedByData = dataCaused;
-            ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError);
+            ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError,
+                request.UseAgent && !agent.Enabled);
             result.EscalatedByShiftReport = shiftCaused;
 
             if (ShiftReportRuleEvaluator.ShiftOnlyExplanation(dataCaused, shiftCaused) is { } cleanExplanation)
@@ -753,7 +754,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             MergeAutoExcludes(llmResult, mastering.AutoExcludes);
             // В агентском пути thinking живёт в трассе (excerpt), а не в переменной —
             // без этого рассинхрон «в мыслях False, в JSON True» (флипы) не виден в логах.
-            var consistencyConflict = CheckThinkingConsistency(request, agentTrace?.ThinkingExcerpt ?? thinking, llmResult);
+            var consistencyConflict = CheckThinkingConsistency(request, agentTrace?.ThinkingTail ?? agentTrace?.ThinkingExcerpt ?? thinking, llmResult);
 
         logger.LogDebug("ParseResponse: RequiresReview={R}, Error={E}, ExcludeFromReports={ExcludeCount} [{ExcludeList}]",
             llmResult.RequiresReview, llmResult.Error ?? "(нет)",
@@ -882,7 +883,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
             resetEffective, shiftRules, modelShiftIssues);
         result.EscalatedByData = dataCaused;
-        ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError);
+        ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError,
+            request.UseAgent && !agent.Enabled);
         result.EscalatedByShiftReport = shiftCaused;
 
         if (ShiftReportRuleEvaluator.ShiftOnlyExplanation(dataCaused, shiftCaused) is { } cleanExplanation)
@@ -963,10 +965,12 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     }
 
     private static void ApplyAutoClosePolicy(
-        AnalyzeResponse result, bool resetOverrodeModel, AgentTrace? agentTrace, bool hasError)
+        AnalyzeResponse result, bool resetOverrodeModel, AgentTrace? agentTrace, bool hasError,
+        bool agentRequestedButDisabled)
     {
         result.AutoCloseBlockers = AutoClosePolicy.Blockers(
-            result.RequiresReview, resetOverrodeModel, agentTrace?.FellBack == true, hasError);
+            result.RequiresReview, resetOverrodeModel, agentTrace?.FellBack == true, hasError,
+            agentRequestedButDisabled);
         result.AutoCloseEligible = AutoClosePolicy.IsEligible(result.RequiresReview, result.AutoCloseBlockers);
     }
 

@@ -15,15 +15,19 @@ public static class AutoClosePolicy
         "агентный контур не завершился (сбой, таймаут или лимит итераций) — вердикт получен запасным путём";
     public const string ModelError =
         "ошибка разбора ответа модели";
+    public const string AgentUnavailable =
+        "агентный режим запрошен, но выключен на сервере — вердикт получен штатным путём без агента";
 
     public static List<string> Blockers(
-        bool requiresReview, bool resetOverrodeModel, bool agentFellBack, bool hasError)
+        bool requiresReview, bool resetOverrodeModel, bool agentFellBack, bool hasError,
+        bool agentUnavailable = false)
     {
         var blockers = new List<string>();
         if (requiresReview) return blockers;
 
         if (resetOverrodeModel) blockers.Add(ResetOverrodeModel);
         if (agentFellBack) blockers.Add(AgentFellBack);
+        if (agentUnavailable) blockers.Add(AgentUnavailable);
         if (hasError) blockers.Add(ModelError);
         return blockers;
     }

@@ -84,6 +84,16 @@ public class AutoCloseExecutorTests
             Ops.Add("revertlog");
             return Task.FromResult(DbResult<bool>.Ok(true));
         }
+
+        public List<AutoCloseLogEntry> RunLog { get; } = new();
+        public bool RunLogThrows { get; set; }
+
+        public Task SaveRunLogAsync(AutoCloseLogEntry entry)
+        {
+            if (RunLogThrows) throw new InvalidOperationException("журнал недоступен");
+            RunLog.Add(entry);
+            return Task.CompletedTask;
+        }
     }
 
     private static Part Row(string name, int setup, string order) =>
@@ -348,6 +358,84 @@ public class AutoCloseExecutorTests
 
         Assert.Equal(AutoCloseStatus.Closed, first.Status);
         Assert.Equal(AutoCloseStatus.LimitReached, second.Status);
+    }
+
+    [Fact]
+    public async Task Closed_WritesRunLog()
+    {
+        var store = new FakeStore();
+
+        await Run(Executor(store), store);
+
+        var e = Assert.Single(store.RunLog);
+        Assert.Equal(AutoCloseLogEntry.OutcomeClosed, e.Outcome);
+        Assert.Equal(Machine, e.Machine);
+        Assert.Equal(Date, e.ShiftDate);
+        Assert.False(e.DryRun);
+        Assert.Equal(0.9, e.AiConfidence);
+        Assert.Equal("v1@agent", e.AiPromptVersion);
+    }
+
+    [Fact]
+    public async Task DryRun_WritesRunLogAsWouldClose_AndNothingElse()
+    {
+        var store = new FakeStore();
+
+        await Run(Executor(store, dryRun: true), store);
+
+        var e = Assert.Single(store.RunLog);
+        Assert.Equal(AutoCloseLogEntry.OutcomeWouldClose, e.Outcome);
+        Assert.True(e.DryRun);
+        Assert.Empty(store.Ops);
+    }
+
+    [Fact]
+    public async Task Manual_WritesRunLogWithReasons()
+    {
+        var store = new FakeStore();
+        var result = Clean();
+        result.AutoCloseEligible = false;
+        result.AutoCloseBlockers = new[] { "агентный контур не завершился" };
+
+        await Run(Executor(store), store, result);
+
+        var e = Assert.Single(store.RunLog);
+        Assert.Equal(AutoCloseLogEntry.OutcomeManual, e.Outcome);
+        Assert.Contains("агентный контур не завершился", e.Reasons);
+    }
+
+    [Fact]
+    public async Task Error_WritesRunLog()
+    {
+        var store = new FakeStore { FailOn = "review" };
+
+        await Run(Executor(store), store);
+
+        Assert.Equal(AutoCloseLogEntry.OutcomeError, Assert.Single(store.RunLog).Outcome);
+    }
+
+    [Fact]
+    public async Task DisabledAndLimit_NotLogged()
+    {
+        var store = new FakeStore();
+        await Run(Executor(store, enabled: false), store);
+        Assert.Empty(store.RunLog);
+
+        var limited = Executor(store, max: 0);
+        var r = await Run(limited, store);
+        Assert.Equal(AutoCloseStatus.LimitReached, r.Status);
+        Assert.Empty(store.RunLog);
+    }
+
+    [Fact]
+    public async Task RunLogFailure_DoesNotChangeOutcome()
+    {
+        var store = new FakeStore { RunLogThrows = true };
+
+        var r = await Run(Executor(store), store);
+
+        Assert.Equal(AutoCloseStatus.Closed, r.Status);
+        Assert.True(store.Day!.IsChecked);
     }
 
     [Fact]

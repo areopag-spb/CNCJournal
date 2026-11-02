@@ -139,15 +139,6 @@ public class AutoCloseGateTests
     }
 
     [Fact]
-    public void ShiftReportIssues_Manual()
-    {
-        var r = CleanResult();
-        r.ShiftReportIssues = new[] { "Смена День: нет причины простоя" };
-
-        Assert.Equal(AutoCloseOutcome.Manual, AutoCloseGate.Evaluate(Req(r), Options).Outcome);
-    }
-
-    [Fact]
     public void FlaggedParts_Manual()
     {
         var r = CleanResult();
@@ -304,5 +295,29 @@ public class AutoCloseGateTests
         var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
 
         Assert.Single(d.Exclusions);
+    }
+
+    [Fact]
+    public void AdvisoryShiftReportIssues_DoNotBlock_WhenServerDidNotEscalate()
+    {
+        // Рекомендательные замечания (S2 «частичная наладка > порога») не эскалируют
+        // на сервере и не блокируют закрытие.
+        var r = CleanResult();
+        r.ShiftReportIssues = new[] { "Смена День: Частичная наладка 48% > 30% — рекомендуется отразить в комментарии мастера" };
+
+        Assert.Equal(AutoCloseOutcome.Close, AutoCloseGate.Evaluate(Req(r), Options).Outcome);
+    }
+
+    [Fact]
+    public void ShiftReportEscalation_Blocks()
+    {
+        var r = CleanResult();
+        r.ShiftReportIssues = new[] { "Смена День: нет причины простоя" };
+        r.EscalatedByShiftReport = true;
+
+        var d = AutoCloseGate.Evaluate(Req(r), Options);
+
+        Assert.Equal(AutoCloseOutcome.Manual, d.Outcome);
+        Assert.Contains(d.Reasons, s => s.Contains("вопросы к отчёту"));
     }
 }

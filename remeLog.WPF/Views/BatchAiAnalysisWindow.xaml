@@ -100,6 +100,10 @@
                     FontSize="14" VerticalAlignment="Center"
                     Command="{Binding ShowAutoCloseHistoryCommand}"
                     ToolTip="Кто и когда пакетно закрывал сутки"/>
+            <Button DockPanel.Dock="Left" Content="Сводка" Width="110" Margin="0 0 12 0"
+                    FontSize="14" VerticalAlignment="Center"
+                    Command="{Binding ShowAutoCloseSummaryCommand}"
+                    ToolTip="Что ИИ закрыл, что оставил человеку и почему; выборочный контроль закрытых суток"/>
             <!-- Принцип отбора кандидатов -->
             <TextBlock VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
                        Foreground="{DynamicResource Areopag.Text2}"

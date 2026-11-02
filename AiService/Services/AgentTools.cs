@@ -45,7 +45,8 @@ public static class AgentTools
         {
             Name = "get_reason_semantics",
             Description = "Семантика одной причины из комбобокса (что объясняет, нужна ли детализация). "
-                + "Вызывай для КАЖДОЙ причины, встреченной в дне, прежде чем решать, объяснена ли аномалия. "
+                + "Вызывай, когда на детали есть сигнал и ты решаешь, объясняет ли его причина отклонения. "
+                + "Не вызывай без сигналов и когда день уже решён HARD. "
                 + "Не выдумывай смысл причин — только этот источник.",
             ParametersJson = """{"type":"object","properties":{"reason":{"type":"string","description":"Текст причины (причинаОтклоненияВНаладке/причинаОтклоненияВИзготовлении из JSON дня)"},"category":{"type":"string","description":"setup (наладка) или machining (изготовление)"}},"required":["reason","category"]}""",
         },
@@ -79,6 +80,7 @@ public static class AgentTools
         {
             Name = "get_normatives",
             Description = "Числа дня по детали из данных (JSON: планНаладки, норматив, машВремя). "
+                + "Не вызывай: те же числа уже в JSON деталей сообщения. "
                 + "СТАДИЯ 1: читает значения из запроса; прямое чтение cnc_normatives — стадия 2 (нужен доступ AiService в БД).",
             ParametersJson = """{"type":"object","properties":{"partName":{"type":"string"}},"required":["partName"]}""",
         },
@@ -398,18 +400,24 @@ public static class AgentTools
         var matches = req.Parts
             .Where(p => p.PartName.Trim().Equals(partName.Trim(), StringComparison.OrdinalIgnoreCase))
             .Take(3)
-            .Select(p => new
+            .Select(p =>
             {
-                деталь = p.PartName,
-                уст = p.Setup,
-                заказ = p.Order,
-                естьЗаказ = HasOrder(p.Order),
-                планНаладки = p.SetupTimePlan,
-                фактНаладки = p.SetupTimeFact,
-                норматив = p.SingleProductionTimePlan,
-                машВремя = p.MachiningTime,
+                var d = new Dictionary<string, object?>
+                {
+                    ["деталь"] = p.PartName,
+                    ["уст"] = p.Setup,
+                    ["заказ"] = p.Order,
+                    ["естьЗаказ"] = HasOrder(p.Order),
+                };
+                // Как в RenderPartsJson: при б/н с планом>0 факт наладки не показываем.
+                d["планНаладки"] = p.SetupTimePlan;
+                if (!AgentLoopService.HidesSetupFact(p, p.NoSetupHappened || !p.SetupRatio.HasValue))
+                    d["фактНаладки"] = p.SetupTimeFact;
+                d["норматив"] = p.SingleProductionTimePlan;
+                d["машВремя"] = p.MachiningTime;
                 // 0 = норматив НЕ УСТАНОВЛЕН (решает модель по естьЗаказ, не по строке).
-                готовоШт = p.FinishedCount,
+                d["готовоШт"] = p.FinishedCount;
+                return d;
             })
             .ToList();
         if (matches.Count == 0)

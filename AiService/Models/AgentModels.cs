@@ -88,9 +88,23 @@ public class AgentTrace
     /// Полный текст не храним: раздувает логи в разы (7+ КБ на раунд).
     /// </summary>
     public string? ThinkingExcerpt { get; set; }
+    /// <summary>
+    /// Конец рассуждений последнего раунда (≤ <c>ThinkingTailCap</c>). Проверка рассинхрона
+    /// «в мыслях эскалация, в JSON нет» смотрит ИМЕННО в конец, а ThinkingExcerpt — это
+    /// начало (обрезка по 3000): у 35 из 164 прогонов с рассуждением (октябрь 2026) вывод
+    /// лежал за обрезкой и проверка его не видела.
+    /// </summary>
+    public string? ThinkingTail { get; set; }
     /// <summary> true — цикл не дал финала (лимит/таймаут/ошибка): контроллер идёт старым путём. </summary>
     public bool FellBack { get; set; }
     public string? FallbackReason { get; set; }
+    /// <summary> Сколько раз цикл перезапускали после кратковременного сбоя (0 или 1; P2.3). </summary>
+    public int Retries { get; set; }
+    /// <summary>
+    /// true — модель выдала вердикт, не запросив смысл причин при сигналах дня, и цикл
+    /// один раз попросил запросить его (см. AgentLoopService.ContextNudgeReasons).
+    /// </summary>
+    public bool ContextNudged { get; set; }
     /// <summary>
     /// Сырой вердикт базы (до верифаеров и downstream-фильтров). Нужен, чтобы
     /// задним числом отличить «база сказала False» от «база сказала True,
