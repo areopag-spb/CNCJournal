@@ -77,6 +77,14 @@ public static class MasteringAutoApprover
         @"универсальн\w*(\s+участ\w*)?|ручн\w*\s+участ\w*|с\s+универсальн\w*",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // «МЦ <операция>» — механический цех: мастер называет, какая универсальная/ручная операция
+    // выполнялась («МЦ Сверлильная операция»). ЭЖ ведёт учёт только операций ЧПУ, поэтому такое название
+    // и есть объяснение (решение владельца 03.11.2026: 52 из 140 замечаний октября были на эту формулировку).
+    // «МЦ» только отдельным словом и обязательно с названием операции следом.
+    private static readonly Regex MechanicalShopRoute = new(
+        @"(?<![\p{L}\d])МЦ(?![\p{L}\d])\W+\p{L}{3,}",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     // Количество установок как название отклонения («за 2 установки»,
     // «в одну установку»). Без требования слова «заложено» — реальное число
     // уже называет несоответствие (прод-логи 08.26: «за 2 установки» флипует).
@@ -198,6 +206,7 @@ public static class MasteringAutoApprover
         if (string.IsNullOrWhiteSpace(detail)) return false;
         if (OtherMachinesRoute.IsMatch(detail)) return true;
         if (NonCncAreaRoute.IsMatch(detail)) return true;
+        if (MechanicalShopRoute.IsMatch(detail)) return true;
         if (SetupCountRoute.IsMatch(detail)) return true;
         if (PartFromOtherMachine.IsMatch(detail)) return true;
         return LaidOutWord.IsMatch(detail) && LaidOutNoun.IsMatch(detail);
