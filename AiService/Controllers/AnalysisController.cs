@@ -9,7 +9,7 @@ namespace AiService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, AgentLoopService agent, ILogger<AnalysisController> logger) : ControllerBase
+public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, AgentLoopService agent, VerifyCache verifyCache, ILogger<AnalysisController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -416,21 +416,35 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
             var promptBuild = promptBuilder.BuildMasterCheck(request);
 
-            // Температура 0.05: подсказка мастеру обязана быть детерминированной —
-            // одинаковый вход даёт одинаковый вердикт (дневной анализ остаётся на 0.1).
-            var (raw, _) = await ollama.GenerateAsync(
-                promptBuild.Prompt, think: false, thinkingProgress: null, ct: ct, model: request.Model,
-                temperature: 0.05);
+            // Кэш (P2.2): клиент шлёт запрос на каждое изменение поля, 3/4 обращений к модели — повторы.
+            // Ключ — итоговый промпт + модель + версия; идентичный промпт даёт тот же ответ.
+            var key = VerifyCache.Key(request.Model, promptBuild.Version, promptBuild.Prompt);
+            var (result, cached) = await verifyCache.GetOrCreateAsync(key, async () =>
+            {
+                // Температура 0.05: подсказка мастеру обязана быть детерминированной —
+                // одинаковый вход даёт одинаковый вердикт (дневной анализ остаётся на 0.1).
+                // Вызов не привязан к отмене клиента: результат достанется следующему такому же запросу.
+                var (raw, _) = await ollama.GenerateAsync(
+                    promptBuild.Prompt, think: false, thinkingProgress: null, ct: CancellationToken.None,
+                    model: request.Model, temperature: 0.05);
 
-            var result = ParseVerifyResponse(raw);
-            result.PromptVersion = promptBuild.Version;
+                var parsed = ParseVerifyResponse(raw);
+                parsed.PromptVersion = promptBuild.Version;
 
-            logger.LogInformation(
-                "Verify-part: {Machine} {Date} «{Part}» → Ok={Ok}{Remark}",
-                request.Machine, request.ShiftDate, request.Part.PartName, result.Ok,
-                result.Ok ? "" : $", remark: {result.Remark}");
+                logger.LogInformation(
+                    "Verify-part: {Machine} {Date} «{Part}» → Ok={Ok}{Remark}",
+                    request.Machine, request.ShiftDate, request.Part.PartName, parsed.Ok,
+                    parsed.Ok ? "" : $", remark: {parsed.Remark}");
 
-            await requestLog.WriteVerifyAsync(request, result);
+                await requestLog.WriteVerifyAsync(request, parsed);
+                return parsed;
+            }, ct);
+
+            if (cached)
+                logger.LogDebug(
+                    "Verify-part: {Machine} {Date} «{Part}» → из кэша (попаданий {Hits}, промахов {Misses}, записей {Count})",
+                    request.Machine, request.ShiftDate, request.Part.PartName,
+                    verifyCache.Hits, verifyCache.Misses, verifyCache.Count);
             return Ok(result);
         }
         catch (TaskCanceledException ex)
