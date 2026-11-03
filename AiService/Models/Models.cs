@@ -206,6 +206,12 @@ public class AnalyzeResponse
     /// </summary>
     public bool AutoCloseEligible { get; set; }
 
+    /// <summary>
+    /// Версия анализа (сборка службы, промпты, настройки агента; см. AnalysisVersion). Клиент хранит её
+    /// рядом с вердиктом и повторно использует вердикт, только если она совпала с текущей из /health.
+    /// </summary>
+    public string? AnalysisVersion { get; set; }
+
     /// <summary> Почему сутки без эскалации всё же не закрываются автоматически. </summary>
     public List<string> AutoCloseBlockers { get; set; } = [];
 

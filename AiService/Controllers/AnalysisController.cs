@@ -9,7 +9,7 @@ namespace AiService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, AgentLoopService agent, VerifyCache verifyCache, AnalysisCache analysisCache, ILogger<AnalysisController> logger) : ControllerBase
+public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, AgentLoopService agent, VerifyCache verifyCache, AnalysisCache analysisCache, IConfiguration configuration, ILogger<AnalysisController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -25,7 +25,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         var ollamaOk = await ollama.CheckHealthAsync();
         logger.LogDebug("Health: IP={IP}, ollama={Ollama}", ip, ollamaOk);
 
-        return Ok(new { status = "ok", ollama = ollamaOk });
+        return Ok(new { status = "ok", ollama = ollamaOk, analysisVersion = CurrentAnalysisVersion() });
     }
 
     [HttpGet("queue-length")]
@@ -352,6 +352,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             }
 
             ClassifyAutoExcludes(request, result);
+            result.AnalysisVersion = CurrentAnalysisVersion();
 
             analysisCache.Set(cacheKey, result);
             await requestLog.WriteAsync(request, result, "analyze", agentTrace);
@@ -896,6 +897,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         }
 
         ClassifyAutoExcludes(request, result);
+        result.AnalysisVersion = CurrentAnalysisVersion();
 
         result.ShiftReportIssues = ShiftReportRuleEvaluator.MergeIssues(shiftRules, modelShiftIssues);
         result.ShiftReportSummary = ShiftReportRuleEvaluator.Summarize(request, shiftRules);
@@ -1021,6 +1023,9 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         llmResult.RequiresReview = true;
         return true;
     }
+
+    private string CurrentAnalysisVersion() =>
+        AnalysisVersion.Compute(promptBuilder.PromptsFingerprint(), configuration);
 
     private static void ClassifyAutoExcludes(AnalyzeRequest request, AnalyzeResponse result)
     {

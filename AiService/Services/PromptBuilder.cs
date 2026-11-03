@@ -217,6 +217,22 @@ public class PromptBuilder
     }
 
     /// <summary>
+    /// Отпечаток всех файлов промптов (имя, размер, время записи): меняется при любой правке или замене
+    /// файла, в том числе при hot-reload без перезапуска. Нужен для «версии анализа» (AnalysisVersion).
+    /// </summary>
+    public string PromptsFingerprint()
+    {
+        var dir = Path.Combine(AssemblyDir ?? AppContext.BaseDirectory, PromptsSubfolder);
+        if (!Directory.Exists(dir)) return "no-prompts";
+        var parts = new DirectoryInfo(dir).EnumerateFiles("*.txt")
+            .OrderBy(f => f.Name, StringComparer.Ordinal)
+            .Select(f => $"{f.Name}:{f.Length}:{f.LastWriteTimeUtc.Ticks}");
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Join('|', parts)));
+        return Convert.ToHexString(bytes)[..16];
+    }
+
+    /// <summary>
     /// Системный скелет агентского контура: тощий system_prompt.agent.txt + суффикс @agent
     /// в версии (точность в ai_day_reviews считается раздельно). Вызывается только
     /// из AgentLoopService, штатный Build не затрагивается.
