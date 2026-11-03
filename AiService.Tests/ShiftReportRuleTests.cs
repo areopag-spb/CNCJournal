@@ -1195,6 +1195,66 @@ public class ShiftReportRuleTests
         Assert.Single(dropped);
     }
 
+    [Theory]
+    [InlineData("оператор пришел к 8 00", "Смена День: Причина «Отсутствие оператора» без указания, кто отсутствовал и почему (простой 29%)")]
+    [InlineData("отсутствие оператора ! наладка станка наладчиком", "Смена День: Комментарий не указывает, кто именно отсутствовал и почему")]
+    [InlineData("оператор пришел к 8 00", "Смена День: Комментарий не объясняет, почему возник частичный простой смены")]
+    [InlineData("420", "Смена День: без указания, где именно работал оператор и почему не был на станке")]
+    public void DropAbsenceWhoDemands_SubstantiveComment_Dropped(string comment, string issue)
+    {
+        // Реплей 03.11.2026: 4 из 45 «ok»-суток эскалировались из-за требования «кто отсутствовал».
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 200, fresh: 200,
+            reason: "Отсутствие оператора", comment: comment));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropAbsenceWhoDemands(req, [issue]);
+
+        if (comment.Trim().Length >= 5)
+        {
+            Assert.Empty(kept);
+            Assert.Single(dropped);
+        }
+        else
+        {
+            // Короче 5 знаков («420») — не содержание, придирка сохраняется.
+            Assert.Single(kept);
+            Assert.Empty(dropped);
+        }
+    }
+
+    [Theory]
+    [InlineData("", "Смена День: не указано, кто отсутствовал и почему")]
+    [InlineData("не заполнил журнал", "Смена День: не указано, кто отсутствовал и почему")]
+    [InlineData("разберёмся позже", "Смена День: не указано, кто отсутствовал и почему")]
+    public void DropAbsenceWhoDemands_EmptyOrFormalComment_Kept(string comment, string issue)
+    {
+        var req = Request(Day(master: "Зайцев Максим Борисович", stored: 200, fresh: 200,
+            reason: "Отсутствие оператора", comment: comment));
+
+        var (kept, dropped) = ShiftReportRuleEvaluator.DropAbsenceWhoDemands(req, [issue]);
+
+        Assert.Single(kept);
+        Assert.Empty(dropped);
+    }
+
+    [Fact]
+    public void DropAbsenceWhoDemands_OtherReasonOrOtherComplaint_Kept()
+    {
+        var other = Request(Day(master: "Зайцев Максим Борисович", stored: 200, fresh: 200,
+            reason: "Ремонт оборудования", comment: "ждали наладчика"));
+        var (k1, d1) = ShiftReportRuleEvaluator.DropAbsenceWhoDemands(other,
+            ["Смена День: не указано, кто отсутствовал и почему"]);
+        Assert.Single(k1);
+        Assert.Empty(d1);
+
+        // Другие придирки при «Отсутствии оператора» («комментарий копирует слова оператора») остаются.
+        var absence = Request(Day(master: "Зайцев Максим Борисович", stored: 200, fresh: 200,
+            reason: "Отсутствие оператора", comment: "оператор сказал что ушёл"));
+        var (k2, d2) = ShiftReportRuleEvaluator.DropAbsenceWhoDemands(absence,
+            ["Смена День: комментарий копирует слова оператора без позиции мастера"]);
+        Assert.Single(k2);
+        Assert.Empty(d2);
+    }
+
     [Fact]
     public void DropTwoMachineRelevanceComplaints_OtherWorkshopMove_Kept()
     {

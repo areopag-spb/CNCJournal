@@ -127,6 +127,10 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // придирки к её детализации/содержанию снимаются.
             (modelShiftIssues, var droppedTwoMachine) =
                 ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(request, modelShiftIssues);
+            // «Кто отсутствовал / почему / где работал» при непустом содержательном
+            // комментарии к «Отсутствию оператора» — комментарий уже объясняет простой.
+            (modelShiftIssues, var droppedAbsenceWho) =
+                ShiftReportRuleEvaluator.DropAbsenceWhoDemands(request, modelShiftIssues);
             // Фактически неверное «причина неизвестна» при причине из закрытого
             // списка — сверка фактом, а не мнением (пилот 24.09.2026 SKT21 22.09).
             (modelShiftIssues, var droppedUnknownReasons) =
@@ -159,6 +163,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Select(d => (d, "мастер отчёта — не оператор; отсутствие в cnc_operators не сигнал")));
             removedSignals.AddRange(droppedTwoMachine
                 .Select(d => (d, "работа на другом станке — релевантная причина простоя")));
+            removedSignals.AddRange(droppedAbsenceWho
+                .Select(d => (d, "комментарий к «Отсутствию оператора» объясняет простой — личность не требуется")));
             removedSignals.AddRange(droppedUnknownReasons
                 .Select(d => (d, "причина есть в закрытом списке — жалоба неверна")));
             removedSignals.AddRange(droppedUnscoped
@@ -743,6 +749,10 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // придирки к её детализации/содержанию снимаются.
             (modelShiftIssues, var droppedTwoMachine) =
                 ShiftReportRuleEvaluator.DropTwoMachineRelevanceComplaints(request, modelShiftIssues);
+            // «Кто отсутствовал / почему / где работал» при непустом содержательном
+            // комментарии к «Отсутствию оператора» — комментарий уже объясняет простой.
+            (modelShiftIssues, var droppedAbsenceWho) =
+                ShiftReportRuleEvaluator.DropAbsenceWhoDemands(request, modelShiftIssues);
             // Фактически неверное «причина неизвестна» при причине из закрытого
             // списка — сверка фактом, а не мнением (пилот 24.09.2026 SKT21 22.09).
             (modelShiftIssues, var droppedUnknownReasons) =
@@ -782,6 +792,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 .Select(d => (d, "мастер отчёта — не оператор; отсутствие в cnc_operators не сигнал")));
             removedSignals.AddRange(droppedTwoMachine
                 .Select(d => (d, "работа на другом станке — релевантная причина простоя")));
+            removedSignals.AddRange(droppedAbsenceWho
+                .Select(d => (d, "комментарий к «Отсутствию оператора» объясняет простой — личность не требуется")));
             removedSignals.AddRange(droppedUnknownReasons
                 .Select(d => (d, "причина есть в закрытом списке — жалоба неверна")));
             removedSignals.AddRange(droppedUnscoped

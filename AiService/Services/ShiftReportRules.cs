@@ -780,6 +780,57 @@ public static class ShiftReportRuleEvaluator
         return (kept, dropped);
     }
 
+    /// <summary>
+    /// Режет требования «кто именно отсутствовал / почему / где работал оператор» при причине
+    /// «Отсутствие оператора» и НЕПУСТОМ содержательном комментарии мастера: простой объясняет сам
+    /// комментарий («оператор пришёл к 8:00», «наладка станка наладчиком»), а выпытывать личность
+    /// отсутствовавшего не нужно (реплей 03.11.2026: 4 из 45 «ok»-суток эскалировались только
+    /// из-за этого). Пустой комментарий и формальные отписки не режутся — их судят hard и модель.
+    /// </summary>
+    public static (List<string> Kept, List<string> Dropped) DropAbsenceWhoDemands(
+        AnalyzeRequest req, List<string> modelIssues)
+    {
+        var kept = new List<string>();
+        var dropped = new List<string>();
+        if (modelIssues.Count == 0) return (kept, dropped);
+
+        var byShift = req.ShiftReports
+            .Where(r => r.ReportExists && r.ShiftMinutes > 0)
+            .ToDictionary(r => r.Shift.Trim().ToLowerInvariant(), r => r);
+
+        foreach (var issue in modelIssues)
+        {
+            if (ShiftTag(issue) is { } tag
+                && byShift.TryGetValue(tag, out var rep)
+                && string.Equals(rep.DowntimeReason?.Trim(), "Отсутствие оператора", StringComparison.OrdinalIgnoreCase)
+                && IsSubstantiveComment(rep.MasterComment)
+                && IsWhoAbsentDemand(issue))
+            {
+                dropped.Add(issue);
+                continue;
+            }
+            kept.Add(issue);
+        }
+        return (kept, dropped);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex FormalCommentRx = new(
+        @"не\s+заполни|не\s+заполнен|разбер[её]мся|не\s+знаю|выясн|уточн|без\s+комментар",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex WhoDemandRx = new(
+        @"\bкто\b[^.]{0,40}отсутств|отсутствовал|где\s+(?:именно\s+)?работал|почему[^.]{0,40}(?:отсутств|не\s+был\s+на\s+станке|возник)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary> Комментарий несёт содержание: не пуст, не короче 5 знаков, не формальная отписка. </summary>
+    private static bool IsSubstantiveComment(string? comment)
+    {
+        var c = (comment ?? "").Trim();
+        return c.Length >= 5 && !FormalCommentRx.IsMatch(c);
+    }
+
+    private static bool IsWhoAbsentDemand(string issue) => WhoDemandRx.IsMatch(issue);
+
     private static bool IsAbsenceOrOther(string? reason) =>
         string.Equals(reason?.Trim(), "Отсутствие оператора", StringComparison.OrdinalIgnoreCase)
         || string.Equals(reason?.Trim(), "Другое", StringComparison.OrdinalIgnoreCase);
