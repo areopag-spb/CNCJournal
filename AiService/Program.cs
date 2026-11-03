@@ -27,6 +27,8 @@ namespace AiService
             builder.Services.AddSingleton<IAgentChatClient>(sp => sp.GetRequiredService<OllamaService>());
             builder.Services.AddSingleton<PromptBuilder>();
             builder.Services.AddSingleton<RequestLog>();
+            // Срок хранения logs/ и request_logs/ (Retention:Days, по умолчанию 180; 0 — выключено).
+            builder.Services.AddHostedService<LogRetentionService>();
             builder.Services.AddSingleton<WebSearchService>();
             builder.Services.AddSingleton<DocsService>();
             builder.Services.AddSingleton<StockService>();
