@@ -135,6 +135,8 @@ namespace remeLog.ViewModels
             ClearChipFiltersCommand = new LambdaCommand(_ => ClearChipFilters());
             MarkDayOkCommand = new LambdaCommand(OnMarkDayOkExecuted, CanMarkDayOkExecute);
             MarkDayEscalatedCommand = new LambdaCommand(OnMarkDayEscalatedExecuted, CanMarkDayEscalatedExecute);
+            AutoCloseAgreeCommand = new LambdaCommand(OnAutoCloseAgreeExecuted, CanAutoCloseControlExecute);
+            AutoCloseMissCommand = new LambdaCommand(OnAutoCloseMissExecuted, CanAutoCloseControlExecute);
             TogglePartFlagCommand = new LambdaCommand(OnTogglePartFlagExecuted);
             AnalyzeDayCommand = new LambdaCommand(OnAnalyzeDayExecuted, CanAnalyzeDayExecute);
             SnapPartsCommand = new LambdaCommand(OnSnapPartsExecuted, CanSnapPartsExecute);
@@ -661,6 +663,68 @@ namespace remeLog.ViewModels
                 : $"{CurrentDayReview.Decision.ToDisplayString()}  ·  {CurrentDayReview.ReviewedBy}  ·  {CurrentDayReview.ReviewedAt:dd.MM.yy HH:mm}";
 
         private List<AutoExcludeLogEntry> _AutoExcludeLog = new();
+        private AutoCloseLogEntry? _AutoCloseEntry;
+
+        /// <summary> true — сутки закрыты ИИ без человека: показываем отметки выборочного контроля. </summary>
+        public bool IsAutoClosedDay => CurrentDayReview is { IsAutoClosed: true } && _AutoCloseEntry != null;
+
+        /// <summary> Результат выборочного контроля закрытых ИИ суток (по журналу автозакрытия). </summary>
+        public string AutoCloseControlText => _AutoCloseEntry?.ControlVerdict switch
+        {
+            AutoCloseLogEntry.ControlAgree => $"контроль: согласен ({_AutoCloseEntry.ControlBy}, {_AutoCloseEntry.ControlAt:dd.MM HH:mm})",
+            AutoCloseLogEntry.ControlMiss => $"контроль: пропуск ИИ ({_AutoCloseEntry.ControlBy}, {_AutoCloseEntry.ControlAt:dd.MM HH:mm})",
+            AutoCloseLogEntry.ControlMissHard => $"контроль: ПРОПУСК HARD ({_AutoCloseEntry.ControlBy}, {_AutoCloseEntry.ControlAt:dd.MM HH:mm})",
+            _ => "контроль: не проверено",
+        };
+
+        public ICommand AutoCloseAgreeCommand { get; private set; } = null!;
+        public ICommand AutoCloseMissCommand { get; private set; } = null!;
+
+        private bool CanAutoCloseControlExecute(object _) => IsAutoClosedDay && IsSingleMachineSingleDay;
+
+        private async void OnAutoCloseAgreeExecuted(object _)
+        {
+            if (_AutoCloseEntry == null) return;
+            if (!await SaveAutoCloseControlAsync(AutoCloseLogEntry.ControlAgree)) return;
+            Status = "Отметка «Согласен» сохранена";
+        }
+
+        // «Пропуск ИИ»: фиксируем в журнале контроля и возвращаем сутки в работу как эскалацию —
+        // решение человека заменяет закрытие ИИ (SaveDayReview сбрасывает признак AutoClosed).
+        private async void OnAutoCloseMissExecuted(object _)
+        {
+            if (_AutoCloseEntry == null) return;
+            var answer = MessageBoxWindow.Show(
+                "Отметить пропуск ИИ и вернуть сутки на разбор?\nРешение по суткам станет «Эскалация» (комментарий можно указать).",
+                "Пропуск ИИ", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxDefaultButton.No);
+            if (answer != MessageBoxResult.Yes) return;
+
+            // Переоткрытие: снимаем зелёную клетку «Проверено техотделом» с обеих смен, иначе календарь
+            // продолжит показывать сутки закрытыми.
+            var machine = MachineFilters.FirstOrDefault(f => f.Filter)?.Machine ?? PartsInfo.Machine;
+            if (!MarkShiftsCheckedAsReviewed(machine, FromDate.Date, value: false)) return;
+
+            if (!await SaveAutoCloseControlAsync(AutoCloseLogEntry.ControlMiss)) return;
+            await SaveDayReviewInternalAsync(AnalystDecision.Escalated, isFullyReviewed: false);
+        }
+
+        private async Task<bool> SaveAutoCloseControlAsync(string verdict)
+        {
+            if (_AutoCloseEntry == null) return false;
+            var saved = await Database.SetAutoCloseControlAsync(
+                _AutoCloseEntry.Id, verdict, Environment.UserName, null);
+            if (saved.Status != remeLog.Core.Db.DbResult.Ok)
+            {
+                MessageBoxWindow.Show($"Не удалось сохранить отметку: {saved.Error}",
+                    "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
+            _AutoCloseEntry.ControlVerdict = verdict;
+            _AutoCloseEntry.ControlBy = Environment.UserName;
+            _AutoCloseEntry.ControlAt = DateTime.Now;
+            OnPropertyChanged(nameof(AutoCloseControlText));
+            return true;
+        }
 
         /// <summary>
         /// Подсказка к статусу суток, закрытых ИИ без человека: когда/чем закрыто и какие
@@ -3431,12 +3495,12 @@ namespace remeLog.ViewModels
         }
 
         /// <summary>
-        /// Проставляет «Проверено техотделом» (cnc_shifts.IsChecked) на обе смены суток —
+        /// Проставляет (или снимает при value=false) «Проверено техотделом» (cnc_shifts.IsChecked) на обе смены суток —
         /// тот флаг, по которому работает календарь проверки. Содержимое отчётов мастера
         /// не трогается: читаем запись и меняем только IsChecked.
         /// </summary>
         /// <returns> false — отчёта нет или ошибка БД, день закрывать нельзя. </returns>
-        private bool MarkShiftsCheckedAsReviewed(string machine, DateTime date)
+        private bool MarkShiftsCheckedAsReviewed(string machine, DateTime date, bool value = true)
         {
             foreach (var shiftType in new[] { ShiftType.Day, ShiftType.Night })
             {
@@ -3457,7 +3521,7 @@ namespace remeLog.ViewModels
                         "Нет отчёта", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return false;
                 }
-                read.Value[0].IsChecked = true;
+                read.Value[0].IsChecked = value;
                 var write = Database.WriteShiftInfo(read.Value[0]);
                 if (!write.IsOk)
                 {
@@ -4029,7 +4093,15 @@ namespace remeLog.ViewModels
             _AutoExcludeLog = CurrentDayReview is { IsAutoClosed: true }
                 ? await Database.GetAutoExcludeLogAsync(machine, FromDate.Date)
                 : new List<AutoExcludeLogEntry>();
+            _AutoCloseEntry = CurrentDayReview is { IsAutoClosed: true }
+                ? (await Database.GetAutoCloseLogAsync(FromDate.Date, FromDate.Date))
+                    .Where(e => e.Machine == machine && !e.DryRun && e.Outcome == AutoCloseLogEntry.OutcomeClosed)
+                    .OrderByDescending(e => e.RunAt).ThenByDescending(e => e.Id)
+                    .FirstOrDefault()
+                : null;
             OnPropertyChanged(nameof(DayReviewStatusToolTip));
+            OnPropertyChanged(nameof(IsAutoClosedDay));
+            OnPropertyChanged(nameof(AutoCloseControlText));
 
             if (CurrentDayReview?.HasAiResult == true)
             {

@@ -1413,6 +1413,19 @@
                                         Visibility="{Binding HasFlaggedParts, Converter={StaticResource VisibilityConverter}}">
                                     <TextBlock Text="{Binding FlaggedPartsCount}" d:Text="1" Foreground="{DynamicResource Areopag.OnAccent}" FontSize="8" FontFamily="{StaticResource Areopag.FontMono}" FontWeight="Bold" TextAlignment="Center"/>
                                 </Border>
+                                <!-- Выборочный контроль закрытых ИИ суток: «Согласен» / «Пропуск ИИ» -->
+                                <StackPanel Orientation="Horizontal" Margin="8 0 0 0" VerticalAlignment="Center"
+                                            Visibility="{Binding IsAutoClosedDay, Converter={StaticResource VisibilityConverter}}">
+                                    <TextBlock Text="{Binding AutoCloseControlText}" FontSize="11"
+                                               Foreground="{DynamicResource Areopag.Text3}"
+                                               VerticalAlignment="Center" Margin="0 0 6 0"/>
+                                    <Button Content="Согласен" Padding="6 0" Margin="0 0 4 0" FontSize="11"
+                                            Command="{Binding AutoCloseAgreeCommand}"
+                                            ToolTip="Подтвердить закрытие суток ИИ (выборочный контроль)"/>
+                                    <Button Content="Пропуск ИИ" Padding="6 0" FontSize="11"
+                                            Command="{Binding AutoCloseMissCommand}"
+                                            ToolTip="ИИ не должен был закрывать эти сутки: отметить пропуск и вернуть на разбор (эскалация)"/>
+                                </StackPanel>
                             </StackPanel>
 
                             <!-- Вызов AI — на месте скрытых ручных кнопок, на обе строки -->
