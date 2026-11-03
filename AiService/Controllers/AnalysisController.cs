@@ -344,6 +344,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     })];
             }
 
+            ClassifyAutoExcludes(request, result);
+
             await requestLog.WriteAsync(request, result, "analyze", agentTrace);
             return Ok(result);
         }
@@ -859,6 +861,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             .Where(e => !hardPartNames.Contains(e.Split('§')[0]))];
         }
 
+        ClassifyAutoExcludes(request, result);
+
         result.ShiftReportIssues = ShiftReportRuleEvaluator.MergeIssues(shiftRules, modelShiftIssues);
         result.ShiftReportSummary = ShiftReportRuleEvaluator.Summarize(request, shiftRules);
         // В общий Signals — только выжившие модельные вопросы (см. Analyze()).
@@ -974,6 +978,13 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             request.Machine, request.ShiftDate, ThinkingConsistency.Tail(thinking!));
         llmResult.RequiresReview = true;
         return true;
+    }
+
+    private static void ClassifyAutoExcludes(AnalyzeRequest request, AnalyzeResponse result)
+    {
+        var (auto, ignored) = AutoExcludePolicy.Classify(request, result.SuggestExcludeFromReports);
+        result.AutoExcludeEntries = auto;
+        result.IgnoredExcludeEntries = ignored;
     }
 
     private static void ApplyAutoClosePolicy(

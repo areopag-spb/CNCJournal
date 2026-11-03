@@ -159,6 +159,16 @@ public class AnalyzeResponse
     public List<string> SuggestExcludeFromReports { get; set; } = [];
 
     /// <summary>
+    /// Подмножество SuggestExcludeFromReports, которое ИИ вправе применить сам при автозакрытии
+    /// (<see cref="Services.AutoExcludePolicy"/>). Клиент: запись вне этого списка и вне
+    /// IgnoredExcludeEntries уводит сутки человеку.
+    /// </summary>
+    public List<string> AutoExcludeEntries { get; set; } = [];
+
+    /// <summary> Предложения по строкам с отмеченными простоями — игнорируются, сутки не блокируют. </summary>
+    public List<string> IgnoredExcludeEntries { get; set; } = [];
+
+    /// <summary>
     /// Ключи PartName§Setup§Order деталей с неустранёнными сигналами (hard +
     /// непониженные soft): ИИ предлагает отметить их проблемными строками (флаги СГТ)
     /// при согласии с вердиктом. Пусто — конкретные строки не указаны.

@@ -337,10 +337,13 @@ public static class HardRuleEvaluator
         "не включать в расч", "не включайте в расч",
     ];
 
-    private static bool OperatorAsksToExclude(string? comment)
+    private static bool OperatorAsksToExclude(string? comment) => AsksToExclude(comment);
+
+    /// <summary> Текст просит не учитывать/исключить запись (маркеры общие для оператора и мастера). </summary>
+    internal static bool AsksToExclude(string? text)
     {
-        if (string.IsNullOrWhiteSpace(comment)) return false;
-        var l = comment.ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var l = text.ToLowerInvariant();
         return ExcludeRequestMarkers.Any(l.Contains);
     }
 
