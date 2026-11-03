@@ -12,6 +12,12 @@ namespace remeLog.Infrastructure
         [JsonPropertyName("suggestedReason")] public string SuggestedReason { get; set; } = "";
         [JsonPropertyName("suggestExcludeFromReports")]
         public string[] SuggestExcludeFromReports { get; set; } = Array.Empty<string>();
+        /// <summary> Предложения об исключении, которые ИИ вправе применить сам (null — служба без классификации). </summary>
+        [JsonPropertyName("autoExcludeEntries")]
+        public string[]? AutoExcludeEntries { get; set; }
+        /// <summary> Предложения по строкам с отмеченными простоями: игнорируются, сутки не блокируют. </summary>
+        [JsonPropertyName("ignoredExcludeEntries")]
+        public string[]? IgnoredExcludeEntries { get; set; }
         [JsonPropertyName("flaggedParts")]
         public string[] FlaggedParts { get; set; } = Array.Empty<string>();
         [JsonPropertyName("shiftReportIssues")]

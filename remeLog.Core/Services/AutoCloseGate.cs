@@ -118,8 +118,28 @@ namespace remeLog.Core.Services
             var entries = r.SuggestExcludeFromReports ?? Array.Empty<string>();
             if (entries.Length == 0) return result;
 
-            var parsed = AiExcludeSuggestion.ParseMany(entries, r.Explanation);
-            if (parsed.Count != entries.Length)
+            // Разрешённые основания проверяет служба (AutoExcludePolicy): подтверждённое освоение
+            // при КПД наладки < 100%, закрытый список причин мастера, явное «исключить» мастера.
+            // Предложения по строкам с отмеченными простоями игнорируются; остальное — человеку.
+            var allowed = r.AutoExcludeEntries;
+            if (allowed == null)
+            {
+                manual.Add("служба не классифицировала основания исключения из К1 — требуется обновление службы");
+                return result;
+            }
+
+            var ignored = r.IgnoredExcludeEntries ?? Array.Empty<string>();
+            var apply = new List<string>();
+            foreach (var e in entries)
+            {
+                if (ignored.Contains(e)) continue;
+                if (allowed.Contains(e)) { apply.Add(e); continue; }
+                manual.Add($"предложено исключение вне разрешённых оснований: {Shorten(e)}");
+            }
+            if (apply.Count == 0) return result;
+
+            var parsed = AiExcludeSuggestion.ParseMany(apply.ToArray(), r.Explanation);
+            if (parsed.Count != apply.Count)
                 manual.Add("предложение об исключении не удалось разобрать");
 
             foreach (var s in parsed)
@@ -136,5 +156,7 @@ namespace remeLog.Core.Services
 
             return result;
         }
+
+        private static string Shorten(string entry) => entry.Length <= 120 ? entry : entry[..120] + "…";
     }
 }

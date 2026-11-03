@@ -166,6 +166,7 @@ public class AutoCloseExecutorTests
         store.Parts.Add(part);
         var result = Clean();
         result.SuggestExcludeFromReports = new[] { "Деталь§1§З1§разовая причина" };
+        result.AutoExcludeEntries = result.SuggestExcludeFromReports;
 
         var r = await Run(Executor(store), store, result);
 
@@ -190,6 +191,7 @@ public class AutoCloseExecutorTests
         store.Parts.Add(part);
         var result = Clean();
         result.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина" };
+        result.AutoExcludeEntries = result.SuggestExcludeFromReports;
 
         var r = await Run(Executor(store), store, result);
 
@@ -206,6 +208,7 @@ public class AutoCloseExecutorTests
         store.Parts.Add(part);
         var result = Clean();
         result.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина" };
+        result.AutoExcludeEntries = result.SuggestExcludeFromReports;
 
         var r = await Run(Executor(store), store, result);
 
@@ -224,6 +227,7 @@ public class AutoCloseExecutorTests
         store.Parts.Add(part);
         var result = Clean();
         result.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина" };
+        result.AutoExcludeEntries = result.SuggestExcludeFromReports;
 
         var r = await Run(Executor(store), store, result);
 
@@ -243,6 +247,7 @@ public class AutoCloseExecutorTests
         store.Parts.Add(part);
         var result = Clean();
         result.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина" };
+        result.AutoExcludeEntries = result.SuggestExcludeFromReports;
 
         var r = await Run(Executor(store), store, result);
 

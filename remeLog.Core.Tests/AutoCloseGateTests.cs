@@ -220,6 +220,7 @@ public class AutoCloseGateTests
         var part = Row("Деталь", 1, "З1");
         var r = CleanResult();
         r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§разовая проблема с инструментом" };
+        r.AutoExcludeEntries = r.SuggestExcludeFromReports;
 
         var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
 
@@ -239,6 +240,7 @@ public class AutoCloseGateTests
             "Деталь§1§З1§причина",
             "Другая§2§З9§причина",
         };
+        r.AutoExcludeEntries = r.SuggestExcludeFromReports;
 
         var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
 
@@ -254,6 +256,7 @@ public class AutoCloseGateTests
         var rows = new[] { Row("Деталь", 1, "З1"), Row("Деталь", 1, "З1") };
         var r = CleanResult();
         r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина" };
+        r.AutoExcludeEntries = r.SuggestExcludeFromReports;
 
         Assert.Equal(AutoCloseOutcome.Manual, AutoCloseGate.Evaluate(Req(r, rows), Options).Outcome);
     }
@@ -263,6 +266,7 @@ public class AutoCloseGateTests
     {
         var r = CleanResult();
         r.SuggestExcludeFromReports = new[] { "мусор" };
+        r.AutoExcludeEntries = r.SuggestExcludeFromReports;
 
         var d = AutoCloseGate.Evaluate(Req(r), Options);
 
@@ -278,6 +282,7 @@ public class AutoCloseGateTests
         part.NeedUpdate = false;
         var r = CleanResult();
         r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина" };
+        r.AutoExcludeEntries = r.SuggestExcludeFromReports;
 
         var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
 
@@ -291,10 +296,75 @@ public class AutoCloseGateTests
         var part = Row("Деталь", 1, "З1");
         var r = CleanResult();
         r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина", "Деталь§1§З1§причина" };
+        r.AutoExcludeEntries = r.SuggestExcludeFromReports;
 
         var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
 
         Assert.Single(d.Exclusions);
+    }
+
+    [Fact]
+    public void Exclusion_OutsideAllowedBasis_Manual_NothingApplied()
+    {
+        // Свободный текст модели («подгон размера») служба не отнесла ни к разрешённым основаниям,
+        // ни к простоям — сутки человеку, исключение не применяется.
+        var part = Row("Деталь", 1, "З1");
+        var r = CleanResult();
+        r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§подгон размера" };
+        r.AutoExcludeEntries = Array.Empty<string>();
+        r.IgnoredExcludeEntries = Array.Empty<string>();
+
+        var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
+
+        Assert.Equal(AutoCloseOutcome.Manual, d.Outcome);
+        Assert.Empty(d.Exclusions);
+        Assert.Contains(d.Reasons, s => s.Contains("вне разрешённых оснований") && s.Contains("подгон размера"));
+    }
+
+    [Fact]
+    public void Exclusion_IgnoredAsDowntime_ClosesWithoutExclusion()
+    {
+        var part = Row("Деталь", 1, "З1");
+        var r = CleanResult();
+        r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§обслуживание станка" };
+        r.AutoExcludeEntries = Array.Empty<string>();
+        r.IgnoredExcludeEntries = new[] { "Деталь§1§З1§обслуживание станка" };
+
+        var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
+
+        Assert.Equal(AutoCloseOutcome.Close, d.Outcome);
+        Assert.Empty(d.Exclusions);
+    }
+
+    [Fact]
+    public void Exclusion_MixedAllowedAndOutside_Manual()
+    {
+        var a = Row("Деталь", 1, "З1");
+        var b = Row("Втулка", 1, "З2");
+        var r = CleanResult();
+        r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§освоение", "Втулка§1§З2§выкатывание" };
+        r.AutoExcludeEntries = new[] { "Деталь§1§З1§освоение" };
+        r.IgnoredExcludeEntries = Array.Empty<string>();
+
+        var d = AutoCloseGate.Evaluate(Req(r, new[] { a, b }), Options);
+
+        Assert.Equal(AutoCloseOutcome.Manual, d.Outcome);
+        Assert.Empty(d.Exclusions);
+    }
+
+    [Fact]
+    public void Exclusion_ServerWithoutClassification_Manual()
+    {
+        // Старая служба не присылает списки: основания неизвестны, исключения не применяем.
+        var part = Row("Деталь", 1, "З1");
+        var r = CleanResult();
+        r.SuggestExcludeFromReports = new[] { "Деталь§1§З1§причина" };
+        r.AutoExcludeEntries = null;
+
+        var d = AutoCloseGate.Evaluate(Req(r, new[] { part }), Options);
+
+        Assert.Equal(AutoCloseOutcome.Manual, d.Outcome);
+        Assert.Contains(d.Reasons, s => s.Contains("не классифицировала"));
     }
 
     [Fact]
