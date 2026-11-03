@@ -56,3 +56,56 @@ public class AutoClosePolicyTests
         Assert.Empty(AutoClosePolicy.Blockers(false, false, false, false, agentUnavailable: false));
     }
 }
+
+public class AutoClosePolicyProcessDeviationTests
+{
+    private static AiService.Models.AnalyzeRequest Req(string operatorComment = "", string masterDetail = "", string shiftComment = "")
+    {
+        var r = new AiService.Models.AnalyzeRequest();
+        r.Parts.Add(new AiService.Models.PartContext
+        {
+            PartName = "Гильза",
+            OperatorComment = operatorComment,
+            MasterSetupDetail = masterDetail,
+        });
+        if (shiftComment.Length > 0)
+            r.ShiftReports.Add(new AiService.Models.ShiftReportContext { Shift = "День", MasterComment = shiftComment });
+        return r;
+    }
+
+    [Theory]
+    [InlineData("работа не по тех.проц. ( По тех.проц все за 2 установки приведет к эллипсу )")] // QTS350 23.10
+    [InlineData("Работа не по техпроцессу")]
+    [InlineData("сделали не по технологии, заготовки кривые")]
+    [InlineData("отступление от тех проц")]
+    [InlineData("Отклонение от технологии согласовано")]
+    public void ProcessDeviationAdmitted_Blocks(string text)
+    {
+        Assert.True(AutoClosePolicy.MentionsProcessDeviation(Req(operatorComment: text)));
+        Assert.True(AutoClosePolicy.MentionsProcessDeviation(Req(masterDetail: text)));
+        Assert.True(AutoClosePolicy.MentionsProcessDeviation(Req(shiftComment: text)));
+
+        var b = AutoClosePolicy.Blockers(false, false, false, false, false, processDeviationAdmitted: true);
+        Assert.Contains(AutoClosePolicy.ProcessDeviationAdmitted, b);
+        Assert.False(AutoClosePolicy.IsEligible(false, b));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("всё по техпроцессу")]
+    [InlineData("работа по тех.проц. выполнена")]
+    [InlineData("ждали наладчика")]
+    [InlineData("Освоение")]
+    public void OrdinaryComments_DoNotBlock(string text)
+    {
+        Assert.False(AutoClosePolicy.MentionsProcessDeviation(Req(operatorComment: text, masterDetail: text, shiftComment: text)));
+        Assert.Empty(AutoClosePolicy.Blockers(false, false, false, false, false, processDeviationAdmitted: false));
+    }
+
+    [Fact]
+    public void Escalated_NoBlockersListed()
+    {
+        // При эскалации блокеры не нужны: сутки и так у человека.
+        Assert.Empty(AutoClosePolicy.Blockers(true, false, false, false, false, processDeviationAdmitted: true));
+    }
+}

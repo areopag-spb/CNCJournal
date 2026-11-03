@@ -289,7 +289,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                 hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
                 resetEffective, shiftRules, modelShiftIssues);
             result.EscalatedByData = dataCaused;
-            ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError,
+            ApplyAutoClosePolicy(request, result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError,
                 request.UseAgent && !agent.Enabled);
             result.EscalatedByShiftReport = shiftCaused;
 
@@ -895,7 +895,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             hardRules, notDowngraded, llmDataCaused, llmResult.HasError,
             resetEffective, shiftRules, modelShiftIssues);
         result.EscalatedByData = dataCaused;
-        ApplyAutoClosePolicy(result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError,
+        ApplyAutoClosePolicy(request, result, resetEffective && modelWantedEscalation, agentTrace, llmResult.HasError,
             request.UseAgent && !agent.Enabled);
         result.EscalatedByShiftReport = shiftCaused;
 
@@ -977,12 +977,12 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     }
 
     private static void ApplyAutoClosePolicy(
-        AnalyzeResponse result, bool resetOverrodeModel, AgentTrace? agentTrace, bool hasError,
-        bool agentRequestedButDisabled)
+        AnalyzeRequest request, AnalyzeResponse result, bool resetOverrodeModel, AgentTrace? agentTrace,
+        bool hasError, bool agentRequestedButDisabled)
     {
         result.AutoCloseBlockers = AutoClosePolicy.Blockers(
             result.RequiresReview, resetOverrodeModel, agentTrace?.FellBack == true, hasError,
-            agentRequestedButDisabled);
+            agentRequestedButDisabled, AutoClosePolicy.MentionsProcessDeviation(request));
         result.AutoCloseEligible = AutoClosePolicy.IsEligible(result.RequiresReview, result.AutoCloseBlockers);
     }
 
