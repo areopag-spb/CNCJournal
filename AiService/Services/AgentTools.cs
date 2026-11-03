@@ -281,32 +281,42 @@ public static class AgentTools
     /// </summary>
     internal static string RenderHistoryDto(PartContext part, PartsHistoryDto dto)
     {
+        var d = new Dictionary<string, object?>
+        {
+            ["деталь"] = part.PartName,
+            ["уст"] = part.Setup,
+            ["заказ"] = part.Order,
+        };
+        foreach (var kv in HistoryBody(dto)) d[kv.Key] = kv.Value;
+        return JsonSerializer.Serialize(d, JsonOptions);
+    }
+
+    /// <summary>
+    /// Тело истории детали: прошлыхСмен + строки (или «впервые подтверждено» при пустой
+    /// истории). Общее для tool get_part_history и поля историяДетали в JSON деталей дня.
+    /// </summary>
+    internal static Dictionary<string, object?> HistoryBody(PartsHistoryDto dto)
+    {
         if (dto.RecordsFound == 0 || dto.Lines.Count == 0)
         {
-            return JsonSerializer.Serialize(new
+            return new Dictionary<string, object?>
             {
-                деталь = part.PartName,
-                уст = part.Setup,
-                заказ = part.Order,
-                прошлыхСмен = 0,
-                вывод = "под другими заказами не выполнялась = заявление «впервые» ПОДТВЕРЖДЕНО",
-            }, JsonOptions);
+                ["прошлыхСмен"] = 0,
+                ["вывод"] = "под другими заказами не выполнялась = заявление «впервые» ПОДТВЕРЖДЕНО",
+            };
         }
-        return JsonSerializer.Serialize(new
+        return new Dictionary<string, object?>
         {
-            деталь = part.PartName,
-            уст = part.Setup,
-            заказ = part.Order,
-            прошлыхСмен = dto.RecordsFound,
-            строки = dto.Lines.Take(5).Select(l => new
+            ["прошлыхСмен"] = dto.RecordsFound,
+            ["строки"] = dto.Lines.Take(5).Select(l => new
             {
                 дата = l.ShiftDate,
                 готовоШт = l.FinishedCount,
                 кпдИзготовления = l.ProductionRatio,
                 кпдНаладки = l.SetupRatio,
                 решение = l.AnalystDecision,
-            }),
-        }, JsonOptions);
+            }).ToList(),
+        };
     }
 
     private static string PastDecisions(AnalyzeRequest req, int limit)

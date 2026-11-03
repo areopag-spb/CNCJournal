@@ -118,6 +118,48 @@ public class AgentPartsJsonTests
     }
 
     [Fact]
+    public void History_PresentOnlyWhereRelevant()
+    {
+        var mastering = Part("Кольцо", "З1", 0.45, 86);
+        mastering.MasterSetupComment = "Освоение";
+        mastering.PartsHistory = new PartsHistoryDto
+        {
+            RecordsFound = 1,
+            Lines = { new PartsHistoryLineDto { ShiftDate = "2026-09-01", FinishedCount = 5, AnalystDecision = "ok" } },
+        };
+        var plain = Part("Втулка", "З2", 0.45, 86);
+        plain.PartsHistory = new PartsHistoryDto
+        {
+            RecordsFound = 1,
+            Lines = { new PartsHistoryLineDto { ShiftDate = "2026-09-01", FinishedCount = 5 } },
+        };
+
+        var parts = Render(true, mastering, plain);
+
+        var h = parts[0].GetProperty("историяДетали");
+        Assert.Equal(1, h.GetProperty("прошлыхСмен").GetInt32());
+        Assert.Equal(5, h.GetProperty("строки")[0].GetProperty("готовоШт").GetInt32());
+        Assert.False(parts[1].TryGetProperty("историяДетали", out _));
+    }
+
+    [Fact]
+    public void History_EmptyConfirmsFirstTime_NullOmitted()
+    {
+        var empty = Part("Кольцо", "З1", 0.45, 86);
+        empty.MasterSetupComment = "Освоение";
+        empty.PartsHistory = new PartsHistoryDto { RecordsFound = 0 };
+        var unknown = Part("Втулка", "З2", 0.45, 86);
+        unknown.MasterSetupComment = "Освоение";
+
+        var parts = Render(true, empty, unknown);
+
+        var h = parts[0].GetProperty("историяДетали");
+        Assert.Equal(0, h.GetProperty("прошлыхСмен").GetInt32());
+        Assert.Contains("ПОДТВЕРЖДЕНО", h.GetProperty("вывод").GetString());
+        Assert.False(parts[1].TryGetProperty("историяДетали", out _));
+    }
+
+    [Fact]
     public void PartialSetupMinutes_VisiblePerRow()
     {
         // Кейс 24.09.2026, SKT21 «Гайка нажимная…»: частичная 3 мин была во

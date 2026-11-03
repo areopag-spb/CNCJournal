@@ -199,7 +199,7 @@ public class PromptBuilder
         "Отсутствие нормативов",
     ];
 
-    private static bool HistoryIsRelevant(PartContext p)
+    internal static bool HistoryIsRelevant(PartContext p)
     {
         foreach (var reason in HistorySensitiveReasons)
         {

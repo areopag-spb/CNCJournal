@@ -379,6 +379,10 @@ public class AgentLoopService(
             AddText(d, "указанныеПростои", p.SpecifiedDowntimesList, 200);
             AddText(d, "комментарийКПростоям", p.SpecifiedDowntimesComment, 200);
             if (p.Signals.Count > 0) d["сигналы"] = p.Signals;
+            // История — только там, где она решает (освоение, нормативы, смена УП); null у
+            // клиента = неизвестно, поле не выдаём (модель может запросить tool).
+            if (p.PartsHistory != null && PromptBuilder.HistoryIsRelevant(p))
+                d["историяДетали"] = AgentTools.HistoryBody(p.PartsHistory);
             list.Add(d);
         }
         return JsonSerializer.Serialize(new { parts = list }, AgentTools.JsonOptions);
