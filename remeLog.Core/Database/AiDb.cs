@@ -592,6 +592,95 @@ namespace remeLog.Infrastructure
             return result;
         }
 
+        /// <summary>
+        /// Сохраняет последний вердикт ИИ по станко-суткам (перезаписывает предыдущий). Вспомогательная запись:
+        /// нет таблицы (БД не обновлена) или сбой — Fail, вызывающий не прерывается.
+        /// </summary>
+        public static async Task<DbResult<bool>> SaveAiDayVerdictAsync(AiDayVerdict v)
+        {
+            if (DomainSettings.DemoMode) return await Task.FromResult(DbResult<bool>.Ok(true));
+            const string sql = @"
+                MERGE ai_day_verdicts AS t
+                USING (SELECT @Machine AS Machine, @ShiftDate AS ShiftDate) AS s
+                   ON t.Machine = s.Machine AND t.ShiftDate = s.ShiftDate
+                WHEN MATCHED THEN UPDATE SET
+                    AnalyzedAt = @AnalyzedAt, AnalyzedBy = @AnalyzedBy, Source = @Source,
+                    InputFingerprint = @Fingerprint, AnalysisVersion = @AnalysisVersion,
+                    AiModelVersion = @Model, ThinkingEnabled = @Thinking,
+                    RequiresReview = @RequiresReview, Confidence = @Confidence, ResultJson = @ResultJson
+                WHEN NOT MATCHED THEN INSERT
+                    (Machine, ShiftDate, AnalyzedAt, AnalyzedBy, Source, InputFingerprint, AnalysisVersion,
+                     AiModelVersion, ThinkingEnabled, RequiresReview, Confidence, ResultJson)
+                    VALUES (@Machine, @ShiftDate, @AnalyzedAt, @AnalyzedBy, @Source, @Fingerprint, @AnalysisVersion,
+                     @Model, @Thinking, @RequiresReview, @Confidence, @ResultJson);";
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Machine", v.Machine);
+                cmd.Parameters.AddWithValue("@ShiftDate", v.ShiftDate.Date);
+                cmd.Parameters.AddWithValue("@AnalyzedAt", v.AnalyzedAt);
+                cmd.Parameters.AddWithValue("@AnalyzedBy", v.AnalyzedBy);
+                cmd.Parameters.AddWithValue("@Source", v.Source);
+                cmd.Parameters.AddWithValue("@Fingerprint", v.InputFingerprint);
+                cmd.Parameters.AddWithValue("@AnalysisVersion", (object?)v.AnalysisVersion ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Model", (object?)v.AiModelVersion ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Thinking", v.ThinkingEnabled);
+                cmd.Parameters.AddWithValue("@RequiresReview", v.Result.RequiresReview);
+                cmd.Parameters.AddWithValue("@Confidence", v.Result.Confidence);
+                cmd.Parameters.AddWithValue("@ResultJson", JsonSerializer.Serialize(v.Result, _jsonOpts));
+                await cmd.ExecuteNonQueryAsync();
+                return DbResult<bool>.Ok(true);
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "SaveAiDayVerdictAsync");
+                return DbResult<bool>.FailWithError(ex.Message);
+            }
+        }
+
+        /// <summary> Последний сохранённый вердикт ИИ по станко-суткам или null (нет записи, нет таблицы, сбой). </summary>
+        public static async Task<AiDayVerdict?> GetAiDayVerdictAsync(string machine, DateTime shiftDate)
+        {
+            if (DomainSettings.DemoMode) return null;
+            const string sql = @"
+                SELECT Id, Machine, ShiftDate, AnalyzedAt, AnalyzedBy, Source, InputFingerprint, AnalysisVersion,
+                       AiModelVersion, ThinkingEnabled, ResultJson
+                FROM ai_day_verdicts WHERE Machine = @Machine AND ShiftDate = @ShiftDate";
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@Machine", machine);
+                cmd.Parameters.AddWithValue("@ShiftDate", shiftDate.Date);
+                await using var r = await cmd.ExecuteReaderAsync();
+                if (!await r.ReadAsync()) return null;
+                var result = JsonSerializer.Deserialize<AiAnalysisResult>(r.GetString(10)) ?? new AiAnalysisResult();
+                return new AiDayVerdict
+                {
+                    Id = r.GetInt32(0),
+                    Machine = r.GetString(1),
+                    ShiftDate = r.GetDateTime(2),
+                    AnalyzedAt = r.GetDateTime(3),
+                    AnalyzedBy = r.GetString(4),
+                    Source = r.GetString(5),
+                    InputFingerprint = r.GetString(6),
+                    AnalysisVersion = r.IsDBNull(7) ? null : r.GetString(7),
+                    AiModelVersion = r.IsDBNull(8) ? null : r.GetString(8),
+                    ThinkingEnabled = r.GetBoolean(9),
+                    Result = result,
+                };
+            }
+            catch (Exception ex)
+            {
+                // Таблицы может не быть (БД не обновлена) — для чтения это «вердикта нет».
+                Log.WriteError(ex, "GetAiDayVerdictAsync");
+                return null;
+            }
+        }
+
         /// <summary> Пишет решение автозакрытия в журнал. Нет таблицы/сбой — Fail (вызывающий не прерывается). </summary>
         public static async Task<DbResult<int>> SaveAutoCloseLogAsync(AutoCloseLogEntry e)
         {

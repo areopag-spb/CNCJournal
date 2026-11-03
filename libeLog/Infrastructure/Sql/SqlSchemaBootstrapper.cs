@@ -886,6 +886,29 @@ namespace libeLog.Infrastructure.Sql
                 .AddIndex(new[] { "Machine", "ShiftDate" }, name: "IX_ai_auto_close_log_machine_date")
                 .Build(),
 
+            // Последний вердикт ИИ по станко-суткам (не решение, а результат анализа): хранится и для суток,
+            // которые ИИ оставил человеку, переживает перезапуск службы и срок хранения request_logs.
+            // InputFingerprint — отпечаток отправленных данных, AnalysisVersion — версия анализа службы
+            // (сборка, промпты, настройки): вердикт повторно используется, только если совпали оба.
+            // ResultJson — полный ответ анализа. Одна строка на станок и дату (перезаписывается).
+            new TableBuilder("ai_day_verdicts")
+                .AddIdColumn()
+                .AddStringColumn("Machine", 50, false)
+                .AddSmallDateTimeColumn("ShiftDate", false)
+                .AddCompositeUnique("Machine", "ShiftDate")
+                .AddDateTimeColumn("AnalyzedAt", false)
+                .AddStringColumn("AnalyzedBy", 128, false)
+                .AddStringColumn("Source", 20, false)
+                .AddStringColumn("InputFingerprint", 64, false)
+                .AddStringColumn("AnalysisVersion", 32)
+                .AddStringColumn("AiModelVersion", 50)
+                .AddBoolColumn("ThinkingEnabled", false, false)
+                .AddBoolColumn("RequiresReview")
+                .AddDoubleColumn("Confidence")
+                .AddStringColumn("ResultJson", -1, false)
+                .AddIndex(new[] { "ShiftDate" }, name: "IX_ai_day_verdicts_date")
+                .Build(),
+
         };
     }
 }

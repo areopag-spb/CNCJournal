@@ -575,6 +575,19 @@ namespace remeLog.ViewModels
             item.RequiresReview = result.RequiresReview;
         }
 
+        private string? _serviceVersion;
+        private DateTime _serviceVersionAt = DateTime.MinValue;
+
+        /// <summary> Версия анализа службы из /health (кэшируется на минуту: сверка вердиктов не должна стоить запроса на каждые сутки). </summary>
+        private async Task<string?> GetServiceAnalysisVersionAsync(CancellationToken ct)
+        {
+            if (DateTime.UtcNow - _serviceVersionAt < TimeSpan.FromMinutes(1)) return _serviceVersion;
+            var health = await _aiClient.CheckHealthAsync(ct);
+            _serviceVersion = health.Server ? health.AnalysisVersion : null;
+            _serviceVersionAt = DateTime.UtcNow;
+            return _serviceVersion;
+        }
+
         private AutoCloseExecutor CreateAutoCloseExecutor()
         {
             var cfg = AppSettings.Instance;
@@ -603,30 +616,57 @@ namespace remeLog.ViewModels
         private async Task<bool> AutoCloseItemAsync(
             AutoCloseExecutor executor, BatchItem item, IReadOnlyList<Part> parts, CancellationToken ct)
         {
-            var result = await _aiClient.AnalyzeAsync(
-                item.Machine, item.Date, parts,
-                thinkingProgress: ItemProgress(item),
-                ct: ct);
+            // Сохранённый вердикт (ai_day_verdicts) переживает перезапуск службы: если данные суток, версия
+            // анализа службы, модель и режим не менялись, повторно ИИ не вызываем.
+            var prepared = await _aiClient.PrepareAnalysisAsync(item.Machine, item.Date, parts, ct);
+            var stored = await Database.GetAiDayVerdictAsync(item.Machine, item.Date);
+            var serviceVersion = stored is null ? null : await GetServiceAnalysisVersionAsync(ct);
+            var reused = AiVerdictReuse.CanReuse(stored, prepared.Fingerprint, serviceVersion, AppSettings.AiModel, ThinkingEnabled);
 
-            if (ct.IsCancellationRequested)
+            AiAnalysisResult result;
+            if (reused)
             {
-                item.State = BatchItemState.Cancelled;
-                item.Summary = "отменено";
-                return false;
+                result = stored!.Result;
             }
-            if (result.HasError)
+            else
             {
-                item.State = BatchItemState.Error;
-                item.Summary = $"ошибка: {result.Error}";
-                item.Explanation = result.Error;
-                return false;
+                result = await _aiClient.AnalyzeAsync(prepared, ItemProgress(item), ct);
+
+                if (ct.IsCancellationRequested)
+                {
+                    item.State = BatchItemState.Cancelled;
+                    item.Summary = "отменено";
+                    return false;
+                }
+                if (result.HasError)
+                {
+                    item.State = BatchItemState.Error;
+                    item.Summary = $"ошибка: {result.Error}";
+                    item.Explanation = result.Error;
+                    return false;
+                }
+
+                // Вспомогательная запись: сбой (нет таблицы, БД не обновлена) закрытие не прерывает.
+                await Database.SaveAiDayVerdictAsync(new AiDayVerdict
+                {
+                    Machine = item.Machine,
+                    ShiftDate = item.Date,
+                    AnalyzedBy = Environment.UserName,
+                    Source = AiDayVerdict.SourceBatch,
+                    InputFingerprint = prepared.Fingerprint,
+                    AnalysisVersion = result.AnalysisVersion,
+                    AiModelVersion = AppSettings.AiModel,
+                    ThinkingEnabled = ThinkingEnabled,
+                    Result = result,
+                });
             }
 
             FillItemVerdict(item, result);
             var outcome = await executor.TryCloseAsync(
                 item.Machine, item.Date, result, parts, AppSettings.AiModel, ThinkingEnabled, ct);
             var reasons = string.Join("; ", outcome.Reasons);
-            var excluded = outcome.ExclusionsApplied > 0 ? $", исключено строк: {outcome.ExclusionsApplied}" : "";
+            var excluded = (outcome.ExclusionsApplied > 0 ? $", исключено строк: {outcome.ExclusionsApplied}" : "")
+                + (reused ? " (вердикт из сохранённого, ИИ не вызывался)" : "");
 
             switch (outcome.Status)
             {

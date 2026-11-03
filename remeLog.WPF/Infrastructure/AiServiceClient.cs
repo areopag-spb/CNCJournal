@@ -16,7 +16,24 @@ using System.Threading.Tasks;
 
 namespace remeLog.Infrastructure
 {
-    public record AiHealthResult(bool Server, bool Ollama, string? Error = null);
+    public record AiHealthResult(bool Server, bool Ollama, string? Error = null, string? AnalysisVersion = null);
+
+    /// <summary>
+    /// Подготовленный запрос анализа суток: тело запроса и отпечаток данных. Отпечаток считается по всему
+    /// запросу (строки, отчёты мастера, история, модель, режим), поэтому совпадение отпечатка и версии
+    /// анализа службы значит, что вердикт не изменится (см. <see cref="remeLog.Models.AiVerdictReuse"/>).
+    /// </summary>
+    public sealed class PreparedAnalysis
+    {
+        internal PreparedAnalysis(object request, string fingerprint)
+        {
+            Request = request;
+            Fingerprint = fingerprint;
+        }
+
+        internal object Request { get; }
+        public string Fingerprint { get; }
+    }
 
     /// <summary>
     /// Тип обновления прогресса анализа. Очередь и размышления идут одним каналом,
@@ -54,7 +71,9 @@ namespace remeLog.Infrastructure
                         $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
                 var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cts.Token);
                 var ollama = json.TryGetProperty("ollama", out var o) && o.GetBoolean();
-                return new AiHealthResult(true, ollama);
+                var version = json.TryGetProperty("analysisVersion", out var v) && v.ValueKind == JsonValueKind.String
+                    ? v.GetString() : null;
+                return new AiHealthResult(true, ollama, null, version);
             }
             catch (OperationCanceledException)
             {
@@ -74,6 +93,19 @@ namespace remeLog.Infrastructure
             string machine, DateTime shiftDate, IEnumerable<Part> parts,
             IProgress<AiProgress>? thinkingProgress = null,
             CancellationToken ct = default)
+            => await AnalyzeAsync(await PrepareAnalysisAsync(machine, shiftDate, parts, ct), thinkingProgress, ct);
+
+        /// <summary> Отправляет подготовленный запрос на анализ. </summary>
+        public Task<AiAnalysisResult> AnalyzeAsync(
+            PreparedAnalysis prepared, IProgress<AiProgress>? thinkingProgress = null, CancellationToken ct = default)
+            => AnalyzeWithStreamAsync(prepared.Request, thinkingProgress, ct);
+
+        /// <summary>
+        /// Собирает запрос анализа (история деталей, отчёты мастера, профиль) и считает отпечаток данных,
+        /// не отправляя его. По отпечатку можно решить, нужен ли анализ вообще.
+        /// </summary>
+        public async Task<PreparedAnalysis> PrepareAnalysisAsync(
+            string machine, DateTime shiftDate, IEnumerable<Part> parts, CancellationToken ct = default)
         {
             var partList = parts.ToList();
             var partsHistories = await LoadPartsHistoriesAsync(
@@ -86,7 +118,9 @@ namespace remeLog.Infrastructure
             var useAgent = AppSettings.Instance.AiThinkingEnabled;
             var request = BuildRequest(machine, shiftDate, partList, partsHistories, promptProfile, shiftReports, useAgent, isSerial);
 
-            return await AnalyzeWithStreamAsync(request, thinkingProgress, ct);
+            var hash = System.Security.Cryptography.SHA256.HashData(
+                Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request)));
+            return new PreparedAnalysis(request, Convert.ToHexString(hash)[..32]);
         }
 
         /// <summary>

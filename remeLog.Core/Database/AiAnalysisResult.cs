@@ -33,6 +33,8 @@ namespace remeLog.Infrastructure
         public string[] AutoCloseBlockers { get; set; } = Array.Empty<string>();
         [JsonPropertyName("error")] public string? Error { get; set; }
         [JsonPropertyName("promptVersion")] public string? PromptVersion { get; set; }
+        /// <summary> Версия анализа службы (сборка, промпты, настройки): сверяется при повторном использовании вердикта. </summary>
+        [JsonPropertyName("analysisVersion")] public string? AnalysisVersion { get; set; }
         public bool HasError => !string.IsNullOrEmpty(Error);
     }
 }

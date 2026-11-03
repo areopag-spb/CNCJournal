@@ -13,7 +13,7 @@
 	<Title>Электронный журнал (Отчёты)</Title>
 	<Description />
 	<AssemblyTitle>Электронный журнал (Отчёты)</AssemblyTitle>
-	<Version>1.2.2</Version>
+	<Version>1.2.3</Version>
   </PropertyGroup>
 
   <ItemGroup>

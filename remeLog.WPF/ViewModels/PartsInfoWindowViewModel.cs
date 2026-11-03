@@ -3222,10 +3222,8 @@ namespace remeLog.ViewModels
 
             try
             {
-                var result = await _aiClient.AnalyzeAsync(
-                    machine, analyzedDate, Parts,
-                    thinkingProgress: progress,
-                    ct: ct);
+                var prepared = await _aiClient.PrepareAnalysisAsync(machine, analyzedDate, Parts, ct);
+                var result = await _aiClient.AnalyzeAsync(prepared, progress, ct);
 
                 if (ct.IsCancellationRequested)
                 {
@@ -3234,6 +3232,22 @@ namespace remeLog.ViewModels
                 }
 
                 AiResult = result;
+
+                // Последний вердикт по станко-суткам сохраняется отдельно от решения аналитика (ai_day_verdicts):
+                // его видно в окне суток без запуска ИИ и он переживает перезапуск службы.
+                if (!result.HasError)
+                    await Database.SaveAiDayVerdictAsync(new AiDayVerdict
+                    {
+                        Machine = machine,
+                        ShiftDate = analyzedDate,
+                        AnalyzedBy = Environment.UserName,
+                        Source = AiDayVerdict.SourceManual,
+                        InputFingerprint = prepared.Fingerprint,
+                        AnalysisVersion = result.AnalysisVersion,
+                        AiModelVersion = AppSettings.AiModel,
+                        ThinkingEnabled = AiThinkingEnabled,
+                        Result = result,
+                    });
 
                 // Агентский вердикт пишется в БД наравне со штатным: этап сравнения
                 // завершён (1012 дней, recall ~99.8%), аналитики работают от одного
@@ -4123,7 +4137,12 @@ namespace remeLog.ViewModels
             }
             else
             {
-                AiResult = null;
+                // Решения по суткам нет (или у него нет вердикта ИИ): показываем последний сохранённый
+                // вердикт ai_day_verdicts, чтобы не запускать ИИ заново.
+                var stored = await Database.GetAiDayVerdictAsync(machine, FromDate.Date);
+                AiResult = stored?.Result;
+                if (stored != null)
+                    Status = $"Показан сохранённый вердикт ИИ от {stored.AnalyzedAt:dd.MM HH:mm} (данные суток могли измениться)";
             }
 
             DayReviewComment = CurrentDayReview?.Comment ?? string.Empty;
