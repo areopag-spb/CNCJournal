@@ -21,6 +21,8 @@ public static class AutoClosePolicy
     public const string AgentUnavailable =
         "агентный режим запрошен, но выключен на сервере — вердикт получен штатным путём без агента";
 
+    public const string ContextOverflow =
+        "контекст модели исчерпан (промпт и ответ упёрлись в лимит) — правила могли быть обрезаны";
     public const string ProcessDeviationAdmitted =
         "в комментариях есть явное признание работы не по техпроцессу — решает человек";
 
@@ -51,7 +53,8 @@ public static class AutoClosePolicy
 
     public static List<string> Blockers(
         bool requiresReview, bool resetOverrodeModel, bool agentFellBack, bool hasError,
-        bool agentUnavailable = false, bool processDeviationAdmitted = false)
+        bool agentUnavailable = false, bool processDeviationAdmitted = false,
+        bool contextOverflow = false)
     {
         var blockers = new List<string>();
         if (requiresReview) return blockers;
@@ -61,6 +64,7 @@ public static class AutoClosePolicy
         if (agentUnavailable) blockers.Add(AgentUnavailable);
         if (hasError) blockers.Add(ModelError);
         if (processDeviationAdmitted) blockers.Add(ProcessDeviationAdmitted);
+        if (contextOverflow) blockers.Add(ContextOverflow);
         return blockers;
     }
 

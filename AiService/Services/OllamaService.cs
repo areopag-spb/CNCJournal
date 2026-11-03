@@ -393,7 +393,15 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             "Chat-ответ: символов {Len}, thinking {TLen}, tool_calls {T}",
             msg?.Content?.Length ?? 0, msg?.Thinking?.Length ?? 0, toolCalls.Count);
 
-            return new ChatResult { Content = msg?.Content ?? "", ToolCalls = toolCalls, Thinking = msg?.Thinking };
+            return new ChatResult
+            {
+                Content = msg?.Content ?? "",
+                ToolCalls = toolCalls,
+                Thinking = msg?.Thinking,
+                PromptTokens = result?.PromptEvalCount ?? 0,
+                CompletionTokens = result?.EvalCount ?? 0,
+                DoneReason = result?.DoneReason,
+            };
         }
     }
 
@@ -414,6 +422,9 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
         var lastThinkReportAt = Stopwatch.GetTimestamp();
         var thinkReportInterval = TimeSpan.FromMilliseconds(20);
         var lastReportedLen = 0;
+        var promptTokens = 0;
+        var completionTokens = 0;
+        string? doneReason = null;
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream, Encoding.UTF8);
@@ -434,6 +445,13 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             {
                 logger.LogWarning(ex, "Не удалось разобрать chat-chunk");
                 continue;
+            }
+
+            if (chunk is { Done: true })
+            {
+                promptTokens = chunk.PromptEvalCount;
+                completionTokens = chunk.EvalCount;
+                doneReason = chunk.DoneReason;
             }
 
             if (chunk?.Message is not { } msg)
@@ -515,6 +533,9 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
             Content = content.ToString(),
             ToolCalls = toolCalls,
             Thinking = thinking.Length == 0 ? null : thinking.ToString(),
+            PromptTokens = promptTokens,
+            CompletionTokens = completionTokens,
+            DoneReason = doneReason,
         };
     }
 
@@ -522,6 +543,9 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
     {
         [JsonPropertyName("message")] public OllamaChatResponseMessage? Message { get; set; }
         [JsonPropertyName("done")] public bool Done { get; set; }
+        [JsonPropertyName("done_reason")] public string? DoneReason { get; set; }
+        [JsonPropertyName("prompt_eval_count")] public int PromptEvalCount { get; set; }
+        [JsonPropertyName("eval_count")] public int EvalCount { get; set; }
     }
 
     private static JsonElement TryParseArguments(string args)
@@ -587,6 +611,9 @@ public class OllamaService(IConfiguration config, ILogger<OllamaService> logger)
     private class OllamaChatResponse
     {
         [JsonPropertyName("message")] public OllamaChatResponseMessage? Message { get; set; }
+        [JsonPropertyName("done_reason")] public string? DoneReason { get; set; }
+        [JsonPropertyName("prompt_eval_count")] public int PromptEvalCount { get; set; }
+        [JsonPropertyName("eval_count")] public int EvalCount { get; set; }
     }
 
     private class OllamaChatResponseMessage

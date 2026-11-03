@@ -40,6 +40,12 @@ public class ChatResult
     public List<AgentToolCall> ToolCalls { get; set; } = [];
     /// <summary> Рассуждение модели (только при think:true, может быть пустым). </summary>
     public string? Thinking { get; set; }
+    /// <summary> prompt_eval_count Ollama: сколько токенов промпта обработано (0 — не сообщено). </summary>
+    public int PromptTokens { get; set; }
+    /// <summary> eval_count Ollama: сколько токенов сгенерировано (0 — не сообщено). </summary>
+    public int CompletionTokens { get; set; }
+    /// <summary> done_reason Ollama: stop штатно, length — оборвано по лимиту токенов. </summary>
+    public string? DoneReason { get; set; }
 }
 
 /// <summary>
@@ -100,6 +106,16 @@ public class AgentTrace
     public string? FallbackReason { get; set; }
     /// <summary> Сколько раз цикл перезапускали после кратковременного сбоя (0 или 1; P2.3). </summary>
     public int Retries { get; set; }
+    /// <summary> Наибольший промпт среди раундов цикла, токенов (prompt_eval_count). </summary>
+    public int PeakPromptTokens { get; set; }
+    /// <summary> Сумма сгенерированных токенов по раундам (eval_count). </summary>
+    public int TotalCompletionTokens { get; set; }
+    /// <summary>
+    /// true — любой раунд упёрся в контекст: промпт+ответ не меньше 95% num_ctx либо done_reason=length.
+    /// Ollama при переполнении молча режет начало (правила), поэтому такие сутки не закрываются
+    /// автоматически (P2.1, AutoClosePolicy).
+    /// </summary>
+    public bool ContextOverflow { get; set; }
     /// <summary>
     /// true — модель выдала вердикт, не запросив смысл причин при сигналах дня, и цикл
     /// один раз попросил запросить его (см. AgentLoopService.ContextNudgeReasons).

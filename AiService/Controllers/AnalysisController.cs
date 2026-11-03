@@ -993,7 +993,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     {
         result.AutoCloseBlockers = AutoClosePolicy.Blockers(
             result.RequiresReview, resetOverrodeModel, agentTrace?.FellBack == true, hasError,
-            agentRequestedButDisabled, AutoClosePolicy.MentionsProcessDeviation(request));
+            agentRequestedButDisabled, AutoClosePolicy.MentionsProcessDeviation(request),
+            agentTrace?.ContextOverflow == true);
         result.AutoCloseEligible = AutoClosePolicy.IsEligible(result.RequiresReview, result.AutoCloseBlockers);
     }
 

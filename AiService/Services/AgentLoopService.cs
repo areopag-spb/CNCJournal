@@ -160,6 +160,7 @@ public class AgentLoopService(
                     think: think, cts.Token, model: request.Model, temperature: Temperature,
                     thinkingProgress: thinkingProgress);
                 trace.ThinkingChars += round.Thinking?.Length ?? 0;
+                RecordTokens(trace, round);
                 AppendExcerpt(trace, i, round.Thinking);
                 if (!string.IsNullOrWhiteSpace(round.Thinking))
                 {
@@ -394,6 +395,19 @@ public class AgentLoopService(
     /// заказа», хотя промпт это запрещает). Факт не передаём, план оставляем: повтор 02.11
     /// показал, что без плана модель пишет «отсутствие плана наладки при наличии заказа».
     /// </summary>
+    /// <summary> num_ctx запроса Chat (OllamaService), токенов. </summary>
+    public const int ContextWindowTokens = 16384;
+
+    /// <summary> Копит токены раунда в трассе и ставит ContextOverflow (P2.1). </summary>
+    public static void RecordTokens(AgentTrace trace, ChatResult round)
+    {
+        trace.PeakPromptTokens = Math.Max(trace.PeakPromptTokens, round.PromptTokens);
+        trace.TotalCompletionTokens += round.CompletionTokens;
+        if (round.PromptTokens + round.CompletionTokens >= ContextWindowTokens * 0.95
+            || string.Equals(round.DoneReason, "length", StringComparison.OrdinalIgnoreCase))
+            trace.ContextOverflow = true;
+    }
+
     public static bool HidesSetupFact(PartContext p, bool noSetup) => noSetup && p.SetupTimePlan > 0;
 
     /// <summary>
