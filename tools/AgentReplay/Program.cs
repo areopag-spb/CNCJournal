@@ -81,7 +81,12 @@ foreach (var file in files)
         // складывается с детерминированным контуром. Сравнение сырого requires_review
         // с финалом прода — некорректно: hard/soft/shift форсируют эскалацию мимо модели.
         var notDowngraded = SoftSignalMatcher.GetNotDowngraded(hard.SoftSignals, agentDowngraded);
-        var pipelineRR = hard.MustEscalate || shift.MustEscalate || notDowngraded.Count > 0 || agentRR == true;
+        // Пост-фильтр ложных сигналов (как в AnalysisController): без него сырая придирка
+        // модели, которую прод гасит, считалась бы эскалацией. Упрощение: сброс не действует
+        // только при вопросах модели к отчёту мастера (shift issues остаются).
+        var fpReset = agentRR == true && FalsePositiveFilter.Apply(req, hard, notDowngraded, agentSigTexts).ShouldReset
+            && agentShiftIssues.Count == 0;
+        var pipelineRR = hard.MustEscalate || shift.MustEscalate || notDowngraded.Count > 0 || (agentRR == true && !fpReset);
 
         var row = new
         {
@@ -103,6 +108,7 @@ foreach (var file in files)
             hardMust = hard.MustEscalate,
             shiftMust = shift.MustEscalate,
             softLeft = notDowngraded.Count,
+            fpReset,
             pipelineRequiresReview = pipelineRR,
             pipelineMatch = pipelineRR == prodRR,
             prodRequiresReview = prodRR,
