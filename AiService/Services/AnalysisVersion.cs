@@ -18,7 +18,7 @@ public static class AnalysisVersion
     public static string Compute(string promptsFingerprint, IConfiguration configuration) =>
         Compute(BuildId, promptsFingerprint, configuration);
 
-    internal static string Compute(string buildId, string promptsFingerprint, IConfiguration configuration)
+    public static string Compute(string buildId, string promptsFingerprint, IConfiguration configuration)
     {
         var settings = string.Join('|',
             configuration.GetValue("Agent:Enabled", false),
