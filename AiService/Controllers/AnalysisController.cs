@@ -9,7 +9,7 @@ namespace AiService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, AgentLoopService agent, VerifyCache verifyCache, ILogger<AnalysisController> logger) : ControllerBase
+public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilder, RequestLog requestLog, AgentLoopService agent, VerifyCache verifyCache, AnalysisCache analysisCache, ILogger<AnalysisController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -55,6 +55,13 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
             var promptBuild = promptBuilder.Build(request, hardRules, shiftRules);
             promptVersion = promptBuild.Version;
+            var cacheKey = AnalysisCacheKey(request, promptBuild.Version);
+            if (analysisCache.TryGet(cacheKey) is { } cachedResult)
+            {
+                logger.LogInformation("Анализ {Machine} {Date}: из кэша (попаданий {Hits}, промахов {Misses}, записей {Count})",
+                    request.Machine, request.ShiftDate, analysisCache.Hits, analysisCache.Misses, analysisCache.Count);
+                return Ok(cachedResult);
+            }
             var thinkCapture = new StringBuilder();
 
             // Агентский контур (стадия 1): подменяется ТОЛЬКО источник сырого ответа
@@ -346,6 +353,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
             ClassifyAutoExcludes(request, result);
 
+            analysisCache.Set(cacheKey, result);
             await requestLog.WriteAsync(request, result, "analyze", agentTrace);
             return Ok(result);
         }
@@ -531,6 +539,18 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
 
         logger.LogDebug("Промпт построен, символов: {Len}", promptBuild.Prompt.Length);
         string? promptVersion = promptBuild.Version;
+
+        // Кэш вердикта: данные суток не менялись — тот же ответ без обращения к модели.
+        var cacheKey = AnalysisCacheKey(request, promptBuild.Version);
+        if (analysisCache.TryGet(cacheKey) is { } cachedResult)
+        {
+            logger.LogInformation("Stream-анализ {Machine} {Date}: из кэша (попаданий {Hits}, промахов {Misses}, записей {Count})",
+                request.Machine, request.ShiftDate, analysisCache.Hits, analysisCache.Misses, analysisCache.Count);
+            if (request.UseAgent && agent.Enabled)
+                await Send("tool", JsonSerializer.Serialize("↺ Данные суток не менялись — ответ из кэша."));
+            await Send("result", JsonSerializer.Serialize(cachedResult, _camelCase));
+            return;
+        }
 
         // Агентский контур в stream-транспорте: цикл с SSE-событиями "tool"
         // («что агент делает»: раунды и вызовы инструментов). Весь downstream ниже —
@@ -930,8 +950,16 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             request.Machine, request.ShiftDate, result.RequiresReview, result.Confidence,
             result.FlaggedParts.Count, result.ShiftReportIssues.Count);
 
+        analysisCache.Set(cacheKey, result);
         await requestLog.WriteAsync(request, result, "stream", agentTrace);
         await Send("result", JsonSerializer.Serialize(result, _camelCase));
+    }
+
+    /// <summary> Ключ кэша анализа: данные запроса, версии штатного и агентского промптов, режим агента. </summary>
+    private string AnalysisCacheKey(AnalyzeRequest request, string promptVersion)
+    {
+        var useAgent = request.UseAgent && agent.Enabled;
+        return AnalysisCache.Key(request, promptVersion, useAgent ? promptBuilder.BuildAgentSystem().Version : null, useAgent);
     }
 
     /// <summary> Синхронный IProgress: вызывает колбэк в потоке рапорта,

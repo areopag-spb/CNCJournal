@@ -29,6 +29,8 @@ namespace AiService
             builder.Services.AddSingleton<RequestLog>();
             // Кэш подсказок мастеру (VerifyCache:Enabled/TtlMinutes/MaxEntries).
             builder.Services.AddSingleton<VerifyCache>();
+            // Кэш вердиктов дневного анализа (AnalysisCache:Enabled/TtlMinutes/MaxEntries).
+            builder.Services.AddSingleton<AnalysisCache>();
             // Срок хранения logs/ и request_logs/ (Retention:Days, по умолчанию 180; 0 — выключено).
             builder.Services.AddHostedService<LogRetentionService>();
             builder.Services.AddSingleton<WebSearchService>();
