@@ -57,6 +57,20 @@ public class PromptBuilderShiftReportTests
     }
 
     [Fact]
+    public void Build_NoParts_StatesNoWork_WithParts_DoesNot()
+    {
+        var empty = Builder().Build(Request(),
+            new HardRuleResult([], []), new ShiftReportRuleResult([], []));
+        Assert.Contains("ЗАПИСЕЙ ЗА СУТКИ НЕТ", empty.Prompt);
+
+        var req = Request();
+        req.Parts = [new PartContext { PartName = "Корпус", Order = "З1", Setup = 1 }];
+        var full = Builder().Build(req,
+            new HardRuleResult([], []), new ShiftReportRuleResult([], []));
+        Assert.DoesNotContain("ЗАПИСЕЙ ЗА СУТКИ НЕТ", full.Prompt);
+    }
+
+    [Fact]
     public void Build_NoShiftReports_NoSection_OldClient()
     {
         var req = Request();

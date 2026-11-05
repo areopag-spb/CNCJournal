@@ -83,6 +83,43 @@ public class AgentLoopServiceTests
         Assert.EndsWith("@agent", outcome.Trace.PromptVersion);
     }
 
+    [Fact]
+    public async Task NoParts_StatesNoWorkExplicitly_AndGivesNoTools()
+    {
+        var req = Request();
+        req.Parts = [];
+        IReadOnlyList<ChatTool>? seenTools = null;
+        var stub = new ToolCapturingChat(t => seenTools = t, """{"requires_review":false}""");
+        var service = new AgentLoopService(stub,
+            new PromptBuilder(NullLogger<PromptBuilder>.Instance), Config(),
+            NullLogger<AgentLoopService>.Instance, RequestAgentDataSource.Instance);
+
+        await service.AnalyzeAsync(req, NoHard, NoShift, CancellationToken.None);
+
+        Assert.NotNull(seenTools);
+        Assert.Empty(seenTools!);
+        var user = stub.UserMessage!;
+        Assert.Contains("ЗАПИСЕЙ ЗА СУТКИ НЕТ", user);
+        Assert.DoesNotContain("\"parts\"", user);
+    }
+
+    private sealed class ToolCapturingChat(Action<IReadOnlyList<ChatTool>> onTools, string json) : IAgentChatClient
+    {
+        public string? UserMessage { get; private set; }
+
+        public Task<ChatResult> ChatAsync(
+            IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
+            string? format, bool think, CancellationToken ct,
+            string? model = null, double? temperature = null,
+            IProgress<string>? thinkingProgress = null,
+            IProgress<string>? tokenProgress = null)
+        {
+            onTools(tools);
+            UserMessage = messages.First(m => m.Role == "user").Content;
+            return Task.FromResult(new ChatResult { Content = json });
+        }
+    }
+
     private static AnalyzeRequest RequestWithSignal()
     {
         var req = Request();

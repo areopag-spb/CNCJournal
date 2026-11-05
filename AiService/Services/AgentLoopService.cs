@@ -104,6 +104,9 @@ public class AgentLoopService(
         return retry;
     }
 
+    /// <summary> Без записей смотреть в данных нечего: tools по деталям не нужны и лишь провоцируют поиск. </summary>
+    private static readonly IReadOnlyList<ChatTool> NoTools = [];
+
     /// <summary> Исключение в цикле («Сбой: …») — единственный повторяемый вид отказа. </summary>
     private static bool IsTransientFailure(AgentTrace trace) =>
         trace.FellBack && trace.FallbackReason?.StartsWith("Сбой:", StringComparison.Ordinal) == true;
@@ -156,7 +159,7 @@ public class AgentLoopService(
                 // format json только в последнем допустимом раунде нет — финал парсится
                 // штатным ParseResponse контроллера (терпит markdown/преамбулы), поэтому null.
                 var round = await chat.ChatAsync(
-                    messages, AgentTools.Definitions, format: null,
+                    messages, request.Parts.Count == 0 ? NoTools : AgentTools.Definitions, format: null,
                     think: think, cts.Token, model: request.Model, temperature: Temperature,
                     thinkingProgress: thinkingProgress);
                 trace.ThinkingChars += round.Thinking?.Length ?? 0;
@@ -513,7 +516,7 @@ public class AgentLoopService(
         sb.AppendLine($"Дата: {request.ShiftDate}");
         foreach (var s in request.Signals)
             sb.AppendLine($"Сигнал дня: {s}");
-        sb.AppendLine(RenderPartsJson(request));
+        sb.AppendLine(request.Parts.Count == 0 ? PromptBuilder.NoPartsNotice : RenderPartsJson(request));
 
         if (hardRules.HardSignals.Count > 0)
         {

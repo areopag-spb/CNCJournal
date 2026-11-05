@@ -284,6 +284,16 @@ public class PromptBuilder
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Записей за сутки нет: станок не работал. Пустой список модель трактует как «данные потерялись»
+    /// и начинает рассуждать, чего не хватает; поэтому говорим прямо, что это норма и что смотреть.
+    /// </summary>
+    public const string NoPartsNotice =
+        "ЗАПИСЕЙ ЗА СУТКИ НЕТ: станок в эти сутки не работал (ни наладки, ни изготовления). " +
+        "Это норма, а не потеря данных: КПД, нормативы, заказы и детали оценивать НЕЧЕГО, " +
+        "не рассуждай об их отсутствии и не делай из него сигналов. " +
+        "Единственное, что проверяется, — отчёт мастера за сутки (раздел ниже).";
+
     public PromptBuildResult Build(AnalyzeRequest req, HardRuleResult hardRules, ShiftReportRuleResult shiftRules)
     {
         var (systemPrompt, promptVersion) = ResolveSystemPrompt(req.PromptProfile);
@@ -309,6 +319,7 @@ public class PromptBuilder
                       : ""));
         sb.AppendLine($"Дата: {req.ShiftDate}");
         sb.AppendLine($"Записей: {req.Parts.Count}");
+        if (req.Parts.Count == 0) sb.AppendLine(NoPartsNotice);
 
         if (req.Signals.Count > 0)
         {
