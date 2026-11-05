@@ -169,3 +169,22 @@ public class AutoClosePolicyProcessDeviationTests
         Assert.Empty(AutoClosePolicy.Blockers(true, false, false, false, false, processDeviationAdmitted: true));
     }
 }
+
+public class MasteringAutoExcludeGroundingTests
+{
+    [Fact] // Hyundai WIA SKT21 №104 10.10: освоение подтверждено, но запись терялась в фильтре предложений
+    public void TemplateAutoExcludeText_IsNotGroundedInRowTexts_SoFilterMustTrustIt()
+    {
+        var p = new AiService.Models.PartContext
+        {
+            PartName = "Плунжер АР27-01-002-09", Order = "УЧ1", Setup = 1, SetupRatio = 0.61,
+            MasterSetupComment = "Освоение", OperatorComment = "освоение",
+        };
+        var request = new AiService.Models.AnalyzeRequest { Parts = [p] };
+        var outcome = AiService.Services.MasteringAutoApprover.Apply(request);
+
+        var entry = Assert.Single(outcome.AutoExcludes);
+        var reason = AiService.Services.ExcludeTriggerValidator.ReasonOf(entry);
+        Assert.False(AiService.Services.ExcludeTriggerValidator.HasGroundedReason(p, reason));
+    }
+}

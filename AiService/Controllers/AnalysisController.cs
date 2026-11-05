@@ -247,7 +247,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
                     ? FallbackReason(hardRules, shiftRules, modelShiftIssues, notDowngraded, llmResult.HasError)
                     : llmResult.SuggestedReason,
                 Error = llmResult.Error,
-                SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
+                SuggestExcludeFromReports = FilterExcludeSuggestions(
+                    llmResult.SuggestExcludeFromReports, request, mastering.AutoExcludes),
                 DowngradedSignals = llmResult.DowngradedSignals,
                 PromptVersion = promptVersion,
             };
@@ -880,7 +881,8 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             SuggestedReason = string.IsNullOrWhiteSpace(llmResult.SuggestedReason)
                 ? FallbackReason(hardRules, shiftRules, modelShiftIssues, notDowngraded, llmResult.HasError) : llmResult.SuggestedReason,
             ThinkingProcess = thinking,
-            SuggestExcludeFromReports = FilterExcludeSuggestions(llmResult.SuggestExcludeFromReports, request),
+            SuggestExcludeFromReports = FilterExcludeSuggestions(
+                llmResult.SuggestExcludeFromReports, request, mastering.AutoExcludes),
             DowngradedSignals = llmResult.DowngradedSignals,
             Error = llmResult.Error,
             PromptVersion = promptVersion,
@@ -1152,11 +1154,20 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
     /// выдумка модели: галка по умолчанию стоит, неверное основание превратилось бы
     /// в неверное исключение из К1 (см. <see cref="ExcludeTriggerValidator"/>).
     /// </summary>
-    private List<string> FilterExcludeSuggestions(List<string> entries, AnalyzeRequest request)
+    private List<string> FilterExcludeSuggestions(
+        List<string> entries, AnalyzeRequest request, IReadOnlyCollection<string>? trustedAutoExcludes = null)
     {
         if (entries.Count == 0) return entries;
 
-        return [.. entries.Select(e => FilterExcludeSuggestion(e, request)).OfType<string>()];
+        // Записи детерминированно подтверждённого освоения (MasteringAutoApprover.Apply) проверку
+        // «слова причины встречаются в текстах строки» не проходят по построению: текст записи
+        // шаблонный («может негативно повлиять на К1 оператора»), а не пересказ детализации.
+        // Раньше фильтр их молча отбрасывал, и закрытые ИИ сутки оставались с КПД наладки 40–65%
+        // в К1 (разбор 05.11.2026). Основание уже проверено кодом, фильтр пропускает такие записи.
+        var trusted = (trustedAutoExcludes ?? []).Select(RowKey).ToHashSet();
+        return [.. entries
+            .Select(e => trusted.Contains(RowKey(e)) ? e : FilterExcludeSuggestion(e, request))
+            .OfType<string>()];
     }
 
     /// <summary>
