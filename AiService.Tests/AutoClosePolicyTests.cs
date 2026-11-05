@@ -57,6 +57,66 @@ public class AutoClosePolicyTests
     }
 }
 
+public class AutoCloseUnexcludedLowKpdTests
+{
+    private static AiService.Models.AnalyzeRequest Req(
+        double? setupRatio = 0.34, string operatorComment = "", string setupReason = "",
+        string machReason = "", double? productionRatio = null, bool noSetup = false)
+    {
+        var r = new AiService.Models.AnalyzeRequest();
+        r.Parts.Add(new AiService.Models.PartContext
+        {
+            PartName = "Корпус", Order = "УЧ1", Setup = 2,
+            SetupRatio = setupRatio, ProductionRatio = productionRatio,
+            OperatorComment = operatorComment, MasterSetupComment = setupReason,
+            MasterMachiningComment = machReason, NoSetupHappened = noSetup,
+        });
+        return r;
+    }
+
+    [Fact] // Mazak QTS200ML 26.10: оператор «освоение», мастер «Другое: ремонт»
+    public void OperatorMastering_MasterOther_Blocks()
+    {
+        var found = AutoClosePolicy.UnexcludedExplainedLowKpd(
+            Req(operatorComment: "освоение", setupReason: "Другое"), null);
+        Assert.Single(found);
+        var b = AutoClosePolicy.Blockers(false, false, false, false, unexcludedLowKpd: found);
+        Assert.Contains(b, x => x.StartsWith(AutoClosePolicy.UnexcludedLowKpdPrefix));
+        Assert.False(AutoClosePolicy.IsEligible(false, b));
+    }
+
+    [Theory]
+    [InlineData("Освоение", "")]
+    [InlineData("Другое", "")]
+    [InlineData("", "ремонт станка")]
+    public void ExplainedLowSetup_Blocks(string reason, string operatorComment)
+        => Assert.Single(AutoClosePolicy.UnexcludedExplainedLowKpd(
+            Req(setupReason: reason, operatorComment: operatorComment), null));
+
+    [Fact]
+    public void AlreadyExcluded_DoesNotBlock()
+        => Assert.Empty(AutoClosePolicy.UnexcludedExplainedLowKpd(
+            Req(setupReason: "Освоение"), ["Корпус§2§УЧ1§освоение"]));
+
+    [Fact]
+    public void KpdAtOrAbove100_NoReason_NoSetupHappened_DoNotBlock()
+    {
+        Assert.Empty(AutoClosePolicy.UnexcludedExplainedLowKpd(Req(setupRatio: 1.0, setupReason: "Освоение"), null));
+        Assert.Empty(AutoClosePolicy.UnexcludedExplainedLowKpd(Req(setupReason: ""), null));
+        Assert.Empty(AutoClosePolicy.UnexcludedExplainedLowKpd(Req(setupReason: "Освоение", noSetup: true), null));
+        Assert.Empty(AutoClosePolicy.UnexcludedExplainedLowKpd(Req(setupReason: "Штучная/длительная работа"), null));
+    }
+
+    [Fact]
+    public void Machining_Other_Blocks_AndEscalatedDayHasNoBlockers()
+    {
+        var found = AutoClosePolicy.UnexcludedExplainedLowKpd(
+            Req(setupRatio: null, productionRatio: 0.5, machReason: "Другое"), null);
+        Assert.Single(found);
+        Assert.Empty(AutoClosePolicy.Blockers(true, false, false, false, unexcludedLowKpd: found));
+    }
+}
+
 public class AutoClosePolicyProcessDeviationTests
 {
     private static AiService.Models.AnalyzeRequest Req(string operatorComment = "", string masterDetail = "", string shiftComment = "")

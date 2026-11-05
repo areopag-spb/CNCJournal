@@ -51,10 +51,56 @@ public static class AutoClosePolicy
         static bool Matches(string? text) => !string.IsNullOrWhiteSpace(text) && ProcessDeviationRx.IsMatch(text);
     }
 
+    public const string UnexcludedLowKpdPrefix =
+        "КПД ниже 100% объяснён освоением, ремонтом или «Другим», но исключение из К1 не оформлено — решает человек";
+
+    private static readonly string[] LowKpdSetupReasons = ["Освоение", "Другое", "Доработка"];
+    private static readonly string[] LowKpdMachiningReasons = ["Другое", "Доработка"];
+
+    /// <summary> Оператор называет причиной освоение или ремонт/поломку оборудования. </summary>
+    private static readonly Regex OperatorExcusableRx = new(
+        @"освоени|ремонт|поломк|неисправн|авари",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Строки с КПД ниже 100%, у которых есть объяснение (причина мастера «Освоение»/«Другое»/«Доработка»
+    /// либо слова оператора об освоении или ремонте), но исключение не оформлено: низкий КПД пойдёт
+    /// в К1 оператора, хотя вина оператора не очевидна. Модель «ок» ставит, а решить исключать или нет
+    /// должен человек (кейс Mazak QTS200ML 26.10: КПД наладки 34%, оператор «освоение», мастер
+    /// «Другое: ремонт станка»). Строки из <paramref name="autoExcludeEntries"/> уже исключаются.
+    /// </summary>
+    public static List<string> UnexcludedExplainedLowKpd(
+        AnalyzeRequest request, IEnumerable<string>? autoExcludeEntries)
+    {
+        var excluded = new HashSet<string>(
+            (autoExcludeEntries ?? []).Select(e => string.Join('§', (e ?? "").Split('§').Take(3))));
+        var found = new List<string>();
+
+        foreach (var p in request.Parts)
+        {
+            var key = $"{p.PartName}§{p.Setup}§{p.Order}";
+            if (excluded.Contains(key)) continue;
+
+            var operatorExcuses = !string.IsNullOrWhiteSpace(p.OperatorComment)
+                && OperatorExcusableRx.IsMatch(p.OperatorComment);
+
+            var setupLow = p.SetupRatio is < 1.0 && !p.NoSetupHappened
+                && (LowKpdSetupReasons.Contains((p.MasterSetupComment ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+                    || operatorExcuses);
+            var machLow = p.ProductionRatio is < 1.0 && !p.NoProductionHappened
+                && (LowKpdMachiningReasons.Contains((p.MasterMachiningComment ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
+                    || operatorExcuses);
+
+            if (setupLow || machLow)
+                found.Add($"{p.PartName} (уст {p.Setup}, {(setupLow ? "наладка" : "изготовление")})");
+        }
+        return found;
+    }
+
     public static List<string> Blockers(
         bool requiresReview, bool resetOverrodeModel, bool agentFellBack, bool hasError,
         bool agentUnavailable = false, bool processDeviationAdmitted = false,
-        bool contextOverflow = false)
+        bool contextOverflow = false, IReadOnlyCollection<string>? unexcludedLowKpd = null)
     {
         var blockers = new List<string>();
         if (requiresReview) return blockers;
@@ -65,6 +111,12 @@ public static class AutoClosePolicy
         if (hasError) blockers.Add(ModelError);
         if (processDeviationAdmitted) blockers.Add(ProcessDeviationAdmitted);
         if (contextOverflow) blockers.Add(ContextOverflow);
+        if (unexcludedLowKpd is { Count: > 0 })
+        {
+            var shown = string.Join("; ", unexcludedLowKpd.Take(3));
+            var more = unexcludedLowKpd.Count > 3 ? $" и ещё {unexcludedLowKpd.Count - 3}" : "";
+            blockers.Add($"{UnexcludedLowKpdPrefix}: {shown}{more}");
+        }
         return blockers;
     }
 

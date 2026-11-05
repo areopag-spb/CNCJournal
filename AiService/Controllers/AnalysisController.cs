@@ -1041,7 +1041,9 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         result.AutoCloseBlockers = AutoClosePolicy.Blockers(
             result.RequiresReview, resetOverrodeModel, agentTrace?.FellBack == true, hasError,
             agentRequestedButDisabled, AutoClosePolicy.MentionsProcessDeviation(request),
-            agentTrace?.ContextOverflow == true);
+            agentTrace?.ContextOverflow == true,
+            AutoClosePolicy.UnexcludedExplainedLowKpd(
+                request, AutoExcludePolicy.Classify(request, result.SuggestExcludeFromReports).Auto));
         result.AutoCloseEligible = AutoClosePolicy.IsEligible(result.RequiresReview, result.AutoCloseBlockers);
     }
 
