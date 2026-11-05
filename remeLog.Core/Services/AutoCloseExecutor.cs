@@ -206,9 +206,6 @@ namespace remeLog.Core.Services
             string? aiModel, bool thinkingEnabled, CancellationToken ct)
         {
             if (!_run.Enabled) return new(AutoCloseStatus.Disabled, new[] { "автозакрытие выключено" });
-            if (_decided >= _run.MaxCloses)
-                return new(AutoCloseStatus.LimitReached, new[] { $"достигнут предел {_run.MaxCloses} за запуск" });
-
             date = date.Date;
             var parts = await _store.ReadPartsAsync(machine, date, ct);
             if (AutoCloseFingerprint.Of(parts) != AutoCloseFingerprint.Of(analyzedParts))
@@ -244,15 +241,22 @@ namespace remeLog.Core.Services
                     return new(AutoCloseStatus.Manual, decision.Reasons);
             }
 
-            _decided++;
+            // Предел защищает от массового НОВОГО закрытия. Подтверждение уже закрытых ИИ суток при
+            // перепроверке (и их возврат человеку) в него не входит: так перепроверка не упирается в лимит.
+            if (!recheck)
+            {
+                if (_decided >= _run.MaxCloses)
+                    return new(AutoCloseStatus.LimitReached, new[] { $"достигнут предел {_run.MaxCloses} за запуск" });
+                _decided++;
+            }
             if (_run.DryRun)
             {
-                _closed++;
+                if (!recheck) _closed++;
                 return new(AutoCloseStatus.WouldClose, Array.Empty<string>(), decision.Exclusions.Count);
             }
 
             var closed = await CloseAsync(machine, date, result, parts, decision, day!, night!, aiModel, thinkingEnabled);
-            if (closed.Status == AutoCloseStatus.Closed) _closed++;
+            if (closed.Status == AutoCloseStatus.Closed && !recheck) _closed++;
             return closed;
         }
 

@@ -443,9 +443,9 @@ public class AutoCloseExecutorTests
         Assert.True(store.Day!.IsChecked);
     }
 
-    private static AutoCloseExecutor Rechecker(FakeStore store, bool dryRun = false) =>
+    private static AutoCloseExecutor Rechecker(FakeStore store, bool dryRun = false, int max = 100) =>
         new(store, new AutoCloseOptions(),
-            new AutoCloseRunOptions { Enabled = true, DryRun = dryRun, RecheckAiClosed = true }, () => Now);
+            new AutoCloseRunOptions { Enabled = true, DryRun = dryRun, RecheckAiClosed = true, MaxCloses = max }, () => Now);
 
     private static FakeStore Checked(DayReview? review)
     {
@@ -488,6 +488,32 @@ public class AutoCloseExecutorTests
         Assert.Equal(AutoCloseStatus.Closed, r.Status);
         Assert.True(store.Day!.IsChecked);
         Assert.True(store.Night!.IsChecked);
+    }
+
+    [Fact]
+    public async Task Recheck_DoesNotConsumeTheCloseLimit()
+    {
+        var confirmed = Checked(AiClosedReview());
+        var ex = Rechecker(confirmed, max: 0);
+        var confirmResult = await Run(ex, confirmed);
+
+        var blocked = Checked(AiClosedReview());
+        var bad = Clean();
+        bad.RequiresReview = true;
+        var reopenResult = await Run(Rechecker(blocked, max: 0), blocked, bad);
+
+        Assert.Equal(AutoCloseStatus.Closed, confirmResult.Status);
+        Assert.Equal(0, ex.ClosedCount);
+        Assert.Equal(AutoCloseStatus.Reopened, reopenResult.Status);
+    }
+
+    [Fact]
+    public async Task Recheck_NewClosureStillHitsLimit()
+    {
+        var store = new FakeStore();
+        var r = await Run(Rechecker(store, max: 0), store);
+
+        Assert.Equal(AutoCloseStatus.LimitReached, r.Status);
     }
 
     [Fact]
