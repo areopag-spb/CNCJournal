@@ -276,6 +276,34 @@ namespace remeLog.Infrastructure
             return result;
         }
 
+        /// <summary>
+        /// Станко-сутки за период, по которым у ИИ есть сохранённый вердикт (ai_day_verdicts). Нет таблицы
+        /// (БД не обновлена) или сбой — пустой набор.
+        /// </summary>
+        public static async Task<HashSet<(string Machine, DateTime Date)>> GetAiDayVerdictKeysAsync(
+            DateTime fromDate, DateTime toDate)
+        {
+            var result = new HashSet<(string, DateTime)>();
+            if (DomainSettings.DemoMode) return result;
+            try
+            {
+                await using var conn = new SqlConnection(DomainSettings.ConnectionString);
+                await conn.OpenAsync();
+                await using var cmd = new SqlCommand(
+                    "SELECT Machine, ShiftDate FROM ai_day_verdicts WHERE ShiftDate BETWEEN @From AND @To", conn);
+                cmd.Parameters.AddWithValue("@From", fromDate.Date);
+                cmd.Parameters.AddWithValue("@To", toDate.Date);
+                await using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                    result.Add((r.GetString(0), r.GetDateTime(1).Date));
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, "GetAiDayVerdictKeysAsync");
+            }
+            return result;
+        }
+
         public static async Task<List<DayReview>> GetAllDayReviewsAsync(CancellationToken ct = default)
         {
             if (DomainSettings.DemoMode) return await Task.FromResult(new List<DayReview>());

@@ -125,6 +125,8 @@ namespace remeLog.ViewModels
                 "Не закрытые сутки и перепроверка закрытых ИИ: если теперь нужен человек, отметка проверки снимается"),
             new(AutoCloseScope.OnlyAi, "Только закрытые ИИ",
                 "Только перепроверка закрытых ИИ: если теперь нужен человек, отметка проверки снимается"),
+            new(AutoCloseScope.WithVerdict, "Только с вердиктом ИИ",
+                "Сутки, которые ИИ уже анализировал (закрыл или оставил человеку): вердикт пересматривается. Ни разу не анализированные не берутся"),
         };
 
         private AutoCloseScope _Scope = AutoCloseScope.Unclosed;
@@ -144,6 +146,9 @@ namespace remeLog.ViewModels
 
         /// <summary> Только сутки, закрытые ИИ (не закрытые пропускаются). </summary>
         public bool OnlyAiClosed => _Scope == AutoCloseScope.OnlyAi;
+
+        /// <summary> Только сутки, по которым у ИИ есть вердикт (закрытые ИИ и оставленные им человеку). </summary>
+        public bool OnlyWithVerdict => _Scope == AutoCloseScope.WithVerdict;
 
         public IReadOnlyList<BatchOption<bool>> WriteModeOptions { get; } = new BatchOption<bool>[]
         {
@@ -179,6 +184,8 @@ namespace remeLog.ViewModels
                         " Закрытые ИИ перепроверяются: если теперь нужен человек, отметка проверки снимается и решение становится «Эскалация».",
                     AutoCloseScope.OnlyAi =>
                         " Берутся только закрытые ИИ: если теперь нужен человек, отметка снимается и решение становится «Эскалация».",
+                    AutoCloseScope.WithVerdict =>
+                        " Берутся только сутки, которые ИИ уже анализировал: закрытые им (если теперь нужен человек, отметка снимается) и оставленные человеку (если теперь ок, ИИ закроет). Ни разу не анализированные пропускаются.",
                     _ => " Уже зелёные пропускаются.",
                 };
                 if (AutoCloseDryRun) hint += " Тень: в БД ничего не пишется.";
@@ -416,6 +423,9 @@ namespace remeLog.ViewModels
             // он дорогой). Авто-ревью («ИИ-авто») человеческим не считается.
             var humanReviewed = new HashSet<(string Machine, DateTime Date)>();
             var reviews = await Database.GetDayReviewsForPeriodAsync(machines, from, to);
+            var verdictKeys = OnlyWithVerdict
+                ? await Database.GetAiDayVerdictKeysAsync(from, to)
+                : new HashSet<(string Machine, DateTime Date)>();
             foreach (var (key, review) in reviews)
                 if (!review.IsAutoClosed) humanReviewed.Add(key);
             if (version != _refreshVersion) return;
@@ -428,6 +438,7 @@ namespace remeLog.ViewModels
             var reviewed = 0;
             var notMature = 0;
             var notAiClosed = 0;
+            var noVerdict = 0;
             foreach (var g in (shiftsResult.Value ?? Enumerable.Empty<ShiftInfo>())
                          .GroupBy(s => new { s.Machine, Date = s.ShiftDate.Date })
                          .OrderBy(g => g.Key.Date).ThenBy(g => g.Key.Machine))
@@ -448,6 +459,11 @@ namespace remeLog.ViewModels
                     if (!recheckItem) { closed++; continue; }
                 }
                 if (OnlyAiClosed && !recheckItem) { notAiClosed++; continue; }
+                if (OnlyWithVerdict && !recheckItem && !verdictKeys.Contains((g.Key.Machine, g.Key.Date)))
+                {
+                    noVerdict++;
+                    continue;
+                }
                 // Решение человека уже есть — не наше дело.
                 if (humanReviewed.Contains((g.Key.Machine, g.Key.Date))) { reviewed++; continue; }
                 // Рано: сутки ещё не созрели (то же правило, что у AutoCloseGate).
@@ -468,7 +484,8 @@ namespace remeLog.ViewModels
             var scope = $"{from:dd.MM.yyyy}–{to:dd.MM.yyyy}";
             var rest = $"уже закрыто: {closed}, решение человека: {reviewed}, " +
                        $"не созрели: {notMature}, без обоих отчётов: {noReports}"
-                       + (OnlyAiClosed ? $", не закрыты ИИ: {notAiClosed}" : "");
+                       + (OnlyAiClosed ? $", не закрыты ИИ: {notAiClosed}" : "")
+                       + (OnlyWithVerdict ? $", без вердикта ИИ: {noVerdict}" : "");
             StatusText = count == 0
                 ? $"Нет кандидатов ({scope}): {rest}"
                 : $"К автозакрытию: {count} ({scope}); {rest}";
@@ -822,6 +839,8 @@ namespace remeLog.ViewModels
         UnclosedAndAi,
         /// <summary> Только закрытые ИИ (перепроверка). </summary>
         OnlyAi,
+        /// <summary> Только сутки с вердиктом ИИ (закрытые им и оставленные человеку): вердикт пересматривается. </summary>
+        WithVerdict,
     }
 
     /// <summary> Вариант выбора в селекторе окна: значение, подпись, подсказка. </summary>
