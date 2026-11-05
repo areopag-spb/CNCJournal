@@ -96,7 +96,8 @@
                        FontSize="14" Margin="0 0 4 0"
                        FontFamily="{DynamicResource Areopag.FontMono}"
                        Foreground="{DynamicResource Areopag.Text}"/>
-            <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding FromDate}" Width="130"
+            <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding FromDate}" Width="140"
+                        VerticalAlignment="Center" VerticalContentAlignment="Center"
                         FontFamily="{DynamicResource Areopag.FontMono}" FontSize="14" Margin="0 0 12 0"
                         BorderThickness="0" Style="{StaticResource DatePickerOutlineStyle}"
                         CalendarStyle="{StaticResource Areopag.CalendarStyle}"/>
@@ -104,7 +105,8 @@
                        FontSize="14" Margin="0 0 4 0"
                        FontFamily="{DynamicResource Areopag.FontMono}"
                        Foreground="{DynamicResource Areopag.Text}"/>
-            <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding ToDate}" Width="130"
+            <DatePicker DockPanel.Dock="Left" SelectedDate="{Binding ToDate}" Width="140"
+                        VerticalAlignment="Center" VerticalContentAlignment="Center"
                         FontFamily="{DynamicResource Areopag.FontMono}" FontSize="14" Margin="0 0 12 0"
                         BorderThickness="0" Style="{StaticResource DatePickerOutlineStyle}"
                         CalendarStyle="{StaticResource Areopag.CalendarStyle}"/>
@@ -124,17 +126,12 @@
                     FontSize="14" VerticalAlignment="Center"
                     Command="{Binding ShowAutoCloseSummaryCommand}"
                     ToolTip="Что ИИ закрыл, что оставил человеку и почему; выборочный контроль закрытых суток"/>
-            <!-- Принцип отбора кандидатов под выбранные режим и охват -->
-            <TextBlock VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
-                       Foreground="{DynamicResource Areopag.Text2}"
-                       Text="{Binding ModeHint}"/>
         </DockPanel>
 
-        <!-- Пояснение режима анализа (период и станки нужны только автозакрытию) -->
+        <!-- Принцип отбора кандидатов под выбранные режим и охват: на всю ширину, чтобы не раздувать строку с датами -->
         <TextBlock DockPanel.Dock="Top" Margin="6 0 6 6" FontSize="12" TextWrapping="Wrap"
                    Foreground="{DynamicResource Areopag.Text2}"
-                   Text="{Binding ModeHint}"
-                   Visibility="{Binding AutoCloseEmpty, Converter={StaticResource InvertedVisibilityConverter}}"/>
+                   Text="{Binding ModeHint}"/>
 
         <ListView ItemsSource="{Binding Items}"
                   FontSize="14"
