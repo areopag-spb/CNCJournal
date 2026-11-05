@@ -40,33 +40,47 @@
                      Width="150" Margin="6 0 0 0"
                      FontSize="14"
                      Command="{Binding RefreshCommand}"/>
-            <CheckBox Content="Только непроверенные"
-                      VerticalAlignment="Center"
-                      FontSize="14" Margin="0 0 8 0"
-                      IsChecked="{Binding OnlyPending}"/>
-            <CheckBox Content="Автозакрытие суток"
-                      VerticalAlignment="Center"
-                      FontSize="14" Margin="0 0 8 0"
-                      IsChecked="{Binding AutoCloseEmpty}"
-                      ToolTip="Отдельный режим: ИИ анализирует сутки и сам закрывает однозначные (зелёная клетка календаря, автоисключения из К1). Только сутки с обоими отчётами мастера."/>
-            <CheckBox Content="Тень"
-                      VerticalAlignment="Center"
-                      FontSize="14" Margin="0 0 8 0"
-                      IsChecked="{Binding AutoCloseDryRun}"
-                      Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}"
-                      ToolTip="Режим тени: анализ и решение считаются, но в БД ничего не пишется (ни ревью, ни исключения, ни отметка смен). Сними галку, чтобы закрывать по-настоящему."/>
-            <CheckBox Content="Перепроверить закрытые ИИ"
-                      VerticalAlignment="Center"
-                      FontSize="14" Margin="0 0 8 0"
-                      IsChecked="{Binding RecheckAiClosed}"
-                      Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}"
-                      ToolTip="Сутки, закрытые ИИ, анализируются заново: если теперь нужен человек — отметка проверки снимается, решение становится «Эскалация» (в тени — только сообщение). Сутки, закрытые человеком, не трогаются."/>
-             <CheckBox Content="Агент"
-                       VerticalAlignment="Center"
-                       FontSize="14" Margin="0 0 8 0"
-                       IsChecked="{Binding ThinkingEnabled}"
-                       Visibility="{Binding IsRunning, Converter={StaticResource InvertedVisibilityConverter}}"
-                       ToolTip="Агентский режим: модель сама запрашивает данные (историю, причины) с сервера. Выкл — обычный thinking-режим с видимыми размышлениями."/>
+            <!-- Селекторы: режим и его параметры. Доступны, пока нет запуска -->
+            <WrapPanel DockPanel.Dock="Left" VerticalAlignment="Center" IsEnabled="{Binding IsIdle}">
+                <StackPanel Margin="0 0 12 0">
+                    <TextBlock Text="Режим" FontSize="11" Foreground="{DynamicResource Areopag.Text3}"/>
+                    <ComboBox MinWidth="170" FontSize="14"
+                              ItemsSource="{Binding ModeOptions}"
+                              DisplayMemberPath="Name" SelectedValuePath="Value"
+                              SelectedValue="{Binding Mode}"/>
+                </StackPanel>
+                <StackPanel Margin="0 0 12 0"
+                            Visibility="{Binding AutoCloseEmpty, Converter={StaticResource InvertedVisibilityConverter}}">
+                    <TextBlock Text="Что брать" FontSize="11" Foreground="{DynamicResource Areopag.Text3}"/>
+                    <ComboBox MinWidth="190" FontSize="14"
+                              ItemsSource="{Binding AnalysisScopeOptions}"
+                              DisplayMemberPath="Name" SelectedValuePath="Value"
+                              SelectedValue="{Binding OnlyPending}"/>
+                </StackPanel>
+                <StackPanel Margin="0 0 12 0"
+                            Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}">
+                    <TextBlock Text="Какие сутки" FontSize="11" Foreground="{DynamicResource Areopag.Text3}"/>
+                    <ComboBox MinWidth="210" FontSize="14"
+                              ItemsSource="{Binding ScopeOptions}"
+                              DisplayMemberPath="Name" SelectedValuePath="Value"
+                              SelectedValue="{Binding Scope}"/>
+                </StackPanel>
+                <StackPanel Margin="0 0 12 0"
+                            Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}">
+                    <TextBlock Text="Запись" FontSize="11" Foreground="{DynamicResource Areopag.Text3}"/>
+                    <ComboBox MinWidth="130" FontSize="14"
+                              ItemsSource="{Binding WriteModeOptions}"
+                              DisplayMemberPath="Name" SelectedValuePath="Value"
+                              SelectedValue="{Binding AutoCloseDryRun}"/>
+                </StackPanel>
+                <StackPanel Margin="0 0 12 0">
+                    <TextBlock Text="ИИ" FontSize="11" Foreground="{DynamicResource Areopag.Text3}"/>
+                    <ComboBox MinWidth="110" FontSize="14"
+                              ItemsSource="{Binding AiModeOptions}"
+                              DisplayMemberPath="Name" SelectedValuePath="Value"
+                              SelectedValue="{Binding ThinkingEnabled}"/>
+                </StackPanel>
+            </WrapPanel>
             <TextBlock VerticalAlignment="Center" FontSize="14">
                 <Run Text="Обработано:"/>
                 <Run Text="{Binding ProcessedCount, Mode=OneWay}"/>
@@ -110,11 +124,17 @@
                     FontSize="14" VerticalAlignment="Center"
                     Command="{Binding ShowAutoCloseSummaryCommand}"
                     ToolTip="Что ИИ закрыл, что оставил человеку и почему; выборочный контроль закрытых суток"/>
-            <!-- Принцип отбора кандидатов -->
+            <!-- Принцип отбора кандидатов под выбранные режим и охват -->
             <TextBlock VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap"
                        Foreground="{DynamicResource Areopag.Text2}"
-                       Text="В списке сутки, где есть оба отчёта мастера и день созрел. Уже зелёные и сутки с решением человека пропускаются; закрывает только то, что ИИ признал однозначным."/>
+                       Text="{Binding ModeHint}"/>
         </DockPanel>
+
+        <!-- Пояснение режима анализа (период и станки нужны только автозакрытию) -->
+        <TextBlock DockPanel.Dock="Top" Margin="6 0 6 6" FontSize="12" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Areopag.Text2}"
+                   Text="{Binding ModeHint}"
+                   Visibility="{Binding AutoCloseEmpty, Converter={StaticResource InvertedVisibilityConverter}}"/>
 
         <ListView ItemsSource="{Binding Items}"
                   FontSize="14"

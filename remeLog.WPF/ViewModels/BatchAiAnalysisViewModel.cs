@@ -34,10 +34,14 @@ namespace remeLog.ViewModels
             {
                 if (Set(ref _IsRunning, value))
                 {
+                    OnPropertyChanged(nameof(IsIdle));
                     CommandManager.InvalidateRequerySuggested();
                 }
             }
         }
+
+        /// <summary> Селекторы режима доступны, пока идёт не запуск. </summary>
+        public bool IsIdle => !_IsRunning;
 
         private double _OverallProgress;
         public double OverallProgress
@@ -67,6 +71,38 @@ namespace remeLog.ViewModels
             set => Set(ref _ProcessedCount, value);
         }
 
+        public IReadOnlyList<BatchOption<BatchMode>> ModeOptions { get; } = new BatchOption<BatchMode>[]
+        {
+            new(BatchMode.Analysis, "Анализ записей",
+                "ИИ анализирует записи ревью суток и сохраняет результат. Решение по суткам не принимает, сутки не закрывает."),
+            new(BatchMode.AutoClose, "Автозакрытие суток",
+                "ИИ анализирует сутки и сам закрывает однозначные (зелёная клетка календаря, автоисключения из К1). Только сутки с обоими отчётами мастера."),
+        };
+
+        private BatchMode _Mode = BatchMode.Analysis;
+        public BatchMode Mode
+        {
+            get => _Mode;
+            set
+            {
+                if (!Set(ref _Mode, value)) return;
+                OnPropertyChanged(nameof(AutoCloseEmpty));
+                OnPropertyChanged(nameof(ModeHint));
+                CommandManager.InvalidateRequerySuggested();
+                _ = RefreshListAsync();
+            }
+        }
+
+        /// <summary> Режим автозакрытия (раньше отдельная галка). </summary>
+        public bool AutoCloseEmpty => _Mode == BatchMode.AutoClose;
+
+        // Режим «Анализ записей»: что брать.
+        public IReadOnlyList<BatchOption<bool>> AnalysisScopeOptions { get; } = new BatchOption<bool>[]
+        {
+            new(true, "Только без вердикта ИИ", "Записи ревью, по которым ИИ ещё не анализировал"),
+            new(false, "Все записи", "Все записи ревью, включая уже проанализированные"),
+        };
+
         private bool _OnlyPending = true;
         public bool OnlyPending
         {
@@ -80,34 +116,40 @@ namespace remeLog.ViewModels
             }
         }
 
-        private bool _AutoCloseEmpty;
-        /// <summary> Отдельный режим: автозакрытие суток без записей при наличии
-        /// обоих отчётов мастера. ИИ не используется. </summary>
-        public bool AutoCloseEmpty
+        // Режим «Автозакрытие»: какие сутки брать.
+        public IReadOnlyList<BatchOption<AutoCloseScope>> ScopeOptions { get; } = new BatchOption<AutoCloseScope>[]
         {
-            get => _AutoCloseEmpty;
+            new(AutoCloseScope.Unclosed, "Только не закрытые",
+                "Сутки, ещё не закрытые ни ИИ, ни человеком"),
+            new(AutoCloseScope.UnclosedAndAi, "Не закрытые и закрытые ИИ",
+                "Не закрытые сутки и перепроверка закрытых ИИ: если теперь нужен человек, отметка проверки снимается"),
+            new(AutoCloseScope.OnlyAi, "Только закрытые ИИ",
+                "Только перепроверка закрытых ИИ: если теперь нужен человек, отметка проверки снимается"),
+        };
+
+        private AutoCloseScope _Scope = AutoCloseScope.Unclosed;
+        public AutoCloseScope Scope
+        {
+            get => _Scope;
             set
             {
-                if (Set(ref _AutoCloseEmpty, value))
-                {
-                    CommandManager.InvalidateRequerySuggested();
-                    _ = RefreshListAsync();
-                }
+                if (!Set(ref _Scope, value)) return;
+                OnPropertyChanged(nameof(ModeHint));
+                if (AutoCloseEmpty && !IsRunning) _ = RefreshListAsync();
             }
         }
 
-        private bool _RecheckAiClosed;
-        /// <summary> Перепроверка: в список попадают и сутки, закрытые ИИ («ИИ-авто»); если теперь нужен человек,
-        /// отметка проверки снимается. Сутки, закрытые человеком, не трогаются. Не запоминается между запусками. </summary>
-        public bool RecheckAiClosed
+        /// <summary> Перепроверка: в список попадают и сутки, закрытые ИИ («ИИ-авто»). Сутки, закрытые человеком, не трогаются. </summary>
+        public bool RecheckAiClosed => _Scope != AutoCloseScope.Unclosed;
+
+        /// <summary> Только сутки, закрытые ИИ (не закрытые пропускаются). </summary>
+        public bool OnlyAiClosed => _Scope == AutoCloseScope.OnlyAi;
+
+        public IReadOnlyList<BatchOption<bool>> WriteModeOptions { get; } = new BatchOption<bool>[]
         {
-            get => _RecheckAiClosed;
-            set
-            {
-                if (Set(ref _RecheckAiClosed, value) && AutoCloseEmpty && !IsRunning)
-                    _ = RefreshListAsync();
-            }
-        }
+            new(true, "Тень", "Анализ и решение считаются, но в БД ничего не пишется (ни ревью, ни исключения, ни отметки смен)"),
+            new(false, "Боевая запись", "Закрывает и снимает отметки по-настоящему"),
+        };
 
         /// <summary> Режим тени автозакрытия: ничего не писать в БД (настройка клиента). </summary>
         public bool AutoCloseDryRun
@@ -119,6 +161,28 @@ namespace remeLog.ViewModels
                 AppSettings.Instance.AutoCloseDryRun = value;
                 AppSettings.Save();
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(ModeHint));
+            }
+        }
+
+        /// <summary> Пояснение под выбранные режим и охват (в окне вместо россыпи подсказок). </summary>
+        public string ModeHint
+        {
+            get
+            {
+                if (!AutoCloseEmpty)
+                    return "ИИ анализирует записи ревью суток из БД и сохраняет результат; решение не принимает и сутки не закрывает.";
+                var hint = "В списке сутки, где есть оба отчёта мастера и день созрел. Сутки с решением человека пропускаются; закрывает только то, что ИИ признал однозначным.";
+                hint += _Scope switch
+                {
+                    AutoCloseScope.UnclosedAndAi =>
+                        " Закрытые ИИ перепроверяются: если теперь нужен человек, отметка проверки снимается и решение становится «Эскалация».",
+                    AutoCloseScope.OnlyAi =>
+                        " Берутся только закрытые ИИ: если теперь нужен человек, отметка снимается и решение становится «Эскалация».",
+                    _ => " Уже зелёные пропускаются.",
+                };
+                if (AutoCloseDryRun) hint += " Тень: в БД ничего не пишется.";
+                return hint;
             }
         }
 
@@ -161,6 +225,12 @@ namespace remeLog.ViewModels
                 }
             }
         }
+
+        public IReadOnlyList<BatchOption<bool>> AiModeOptions { get; } = new BatchOption<bool>[]
+        {
+            new(true, "Агент", "Агентский режим: модель сама запрашивает данные (историю, причины) с сервера"),
+            new(false, "Thinking", "Обычный thinking-режим с видимыми размышлениями"),
+        };
 
         public ICommand StartCommand { get; }
         public ICommand CancelCommand { get; }
@@ -357,6 +427,7 @@ namespace remeLog.ViewModels
             var noReports = 0;
             var reviewed = 0;
             var notMature = 0;
+            var notAiClosed = 0;
             foreach (var g in (shiftsResult.Value ?? Enumerable.Empty<ShiftInfo>())
                          .GroupBy(s => new { s.Machine, Date = s.ShiftDate.Date })
                          .OrderBy(g => g.Key.Date).ThenBy(g => g.Key.Machine))
@@ -376,6 +447,7 @@ namespace remeLog.ViewModels
                         && reviews.TryGetValue((g.Key.Machine, g.Key.Date), out var aiReview) && aiReview.IsAutoClosed;
                     if (!recheckItem) { closed++; continue; }
                 }
+                if (OnlyAiClosed && !recheckItem) { notAiClosed++; continue; }
                 // Решение человека уже есть — не наше дело.
                 if (humanReviewed.Contains((g.Key.Machine, g.Key.Date))) { reviewed++; continue; }
                 // Рано: сутки ещё не созрели (то же правило, что у AutoCloseGate).
@@ -395,7 +467,8 @@ namespace remeLog.ViewModels
             TotalCount = count;
             var scope = $"{from:dd.MM.yyyy}–{to:dd.MM.yyyy}";
             var rest = $"уже закрыто: {closed}, решение человека: {reviewed}, " +
-                       $"не созрели: {notMature}, без обоих отчётов: {noReports}";
+                       $"не созрели: {notMature}, без обоих отчётов: {noReports}"
+                       + (OnlyAiClosed ? $", не закрыты ИИ: {notAiClosed}" : "");
             StatusText = count == 0
                 ? $"Нет кандидатов ({scope}): {rest}"
                 : $"К автозакрытию: {count} ({scope}); {rest}";
@@ -731,6 +804,28 @@ namespace remeLog.ViewModels
             return false;
         }
     }
+
+    internal enum BatchMode
+    {
+        /// <summary> ИИ-анализ записей ревью, без решений по суткам. </summary>
+        Analysis,
+        /// <summary> Автозакрытие суток. </summary>
+        AutoClose,
+    }
+
+    /// <summary> Охват автозакрытия: какие сутки брать в список. </summary>
+    internal enum AutoCloseScope
+    {
+        /// <summary> Только не закрытые. </summary>
+        Unclosed,
+        /// <summary> Не закрытые и закрытые ИИ (перепроверка). </summary>
+        UnclosedAndAi,
+        /// <summary> Только закрытые ИИ (перепроверка). </summary>
+        OnlyAi,
+    }
+
+    /// <summary> Вариант выбора в селекторе окна: значение, подпись, подсказка. </summary>
+    internal sealed record BatchOption<T>(T Value, string Name, string Hint);
 
     internal enum BatchItemState
     {
