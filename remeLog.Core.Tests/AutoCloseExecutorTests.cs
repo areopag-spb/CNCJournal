@@ -443,6 +443,110 @@ public class AutoCloseExecutorTests
         Assert.True(store.Day!.IsChecked);
     }
 
+    private static AutoCloseExecutor Rechecker(FakeStore store, bool dryRun = false) =>
+        new(store, new AutoCloseOptions(),
+            new AutoCloseRunOptions { Enabled = true, DryRun = dryRun, RecheckAiClosed = true }, () => Now);
+
+    private static FakeStore Checked(DayReview? review)
+    {
+        var store = new FakeStore { Existing = review };
+        store.Day!.IsChecked = true;
+        store.Night!.IsChecked = true;
+        return store;
+    }
+
+    private static DayReview AiClosedReview() =>
+        new(Machine, Date, DayReview.AutoReviewer, AnalystDecision.Ok, true, "Автозакрытие: ИИ ок") { AutoClosed = true };
+
+    [Fact]
+    public async Task Recheck_AiClosedDay_NowNeedsHuman_UnchecksBothShiftsAndEscalates()
+    {
+        var store = Checked(AiClosedReview());
+        var result = Clean();
+        result.AutoCloseEligible = false;
+        result.AutoCloseBlockers = new[] { "КПД ниже 100% объяснён освоением, но исключение не оформлено" };
+
+        var r = await Run(Rechecker(store), store, result);
+
+        Assert.Equal(AutoCloseStatus.Reopened, r.Status);
+        Assert.Equal(new[] { "review", "shift:День:False", "shift:Ночь:False" }, store.Ops);
+        Assert.Equal(DayReview.RecheckReviewer, store.SavedReview!.ReviewedBy);
+        Assert.Equal(AnalystDecision.Escalated, store.SavedReview.Decision);
+        Assert.False(store.SavedReview.IsAutoClosed);
+        Assert.False(store.Day!.IsChecked);
+        Assert.False(store.Night!.IsChecked);
+        Assert.Equal(AutoCloseLogEntry.OutcomeReopened, Assert.Single(store.RunLog).Outcome);
+    }
+
+    [Fact]
+    public async Task Recheck_AiClosedDay_StillOk_ConfirmsClosure()
+    {
+        var store = Checked(AiClosedReview());
+
+        var r = await Run(Rechecker(store), store);
+
+        Assert.Equal(AutoCloseStatus.Closed, r.Status);
+        Assert.True(store.Day!.IsChecked);
+        Assert.True(store.Night!.IsChecked);
+    }
+
+    [Fact]
+    public async Task Recheck_HumanReviewedDay_NeverTouched()
+    {
+        var human = new DayReview(Machine, Date, "Аналитик", AnalystDecision.Ok, true, "ок");
+        var store = Checked(human);
+        var result = Clean();
+        result.RequiresReview = true;
+
+        var r = await Run(Rechecker(store), store, result);
+
+        Assert.Equal(AutoCloseStatus.Manual, r.Status);
+        Assert.Empty(store.Ops);
+        Assert.True(store.Day!.IsChecked);
+    }
+
+    [Fact]
+    public async Task Recheck_CheckedByHumanWithoutReview_NeverTouched()
+    {
+        var store = Checked(null);
+        var result = Clean();
+        result.RequiresReview = true;
+
+        var r = await Run(Rechecker(store), store, result);
+
+        Assert.Equal(AutoCloseStatus.Manual, r.Status);
+        Assert.Empty(store.Ops);
+        Assert.True(store.Night!.IsChecked);
+    }
+
+    [Fact]
+    public async Task Recheck_DryRun_ReportsButWritesNothing()
+    {
+        var store = Checked(AiClosedReview());
+        var result = Clean();
+        result.RequiresReview = true;
+
+        var r = await Run(Rechecker(store, dryRun: true), store, result);
+
+        Assert.Equal(AutoCloseStatus.Reopened, r.Status);
+        Assert.Empty(store.Ops);
+        Assert.True(store.Day!.IsChecked);
+    }
+
+    [Fact]
+    public async Task WithoutRecheckOption_AiClosedCheckedDay_IsLeftAlone()
+    {
+        var store = Checked(AiClosedReview());
+        var result = Clean();
+        result.RequiresReview = true;
+
+        var r = await Run(Executor(store), store, result);
+
+        Assert.Equal(AutoCloseStatus.Manual, r.Status);
+        Assert.Empty(store.Ops);
+        Assert.True(store.Day!.IsChecked);
+    }
+
     [Fact]
     public void Fingerprint_StableAndSensitive()
     {

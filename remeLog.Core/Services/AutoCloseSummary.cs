@@ -85,7 +85,8 @@ namespace remeLog.Core.Services
                     case AutoCloseLogEntry.OutcomeClosed:
                         summary.Closed++;
                         closed.Add(e);
-                        if (reviews.TryGetValue((e.Machine, e.ShiftDate.Date), out var review) && !review.IsAutoClosed)
+                        if (reviews.TryGetValue((e.Machine, e.ShiftDate.Date), out var review) && !review.IsAutoClosed
+                            && review.ReviewedBy != DayReview.RecheckReviewer)
                             summary.ReopenedByHuman++;
                         switch (e.ControlVerdict)
                         {

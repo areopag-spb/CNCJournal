@@ -14,6 +14,8 @@ namespace remeLog.Models
         public const string OutcomeDeferred = "Deferred";
         public const string OutcomeManual = "Manual";
         public const string OutcomeError = "Error";
+        /// <summary> Перепроверка закрытых ИИ суток: отметка снята, сутки возвращены человеку. </summary>
+        public const string OutcomeReopened = "Reopened";
 
         public const string ControlAgree = "agree";
         public const string ControlMiss = "miss";

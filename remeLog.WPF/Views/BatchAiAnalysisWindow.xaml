@@ -55,6 +55,12 @@
                       IsChecked="{Binding AutoCloseDryRun}"
                       Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}"
                       ToolTip="Режим тени: анализ и решение считаются, но в БД ничего не пишется (ни ревью, ни исключения, ни отметка смен). Сними галку, чтобы закрывать по-настоящему."/>
+            <CheckBox Content="Перепроверить закрытые ИИ"
+                      VerticalAlignment="Center"
+                      FontSize="14" Margin="0 0 8 0"
+                      IsChecked="{Binding RecheckAiClosed}"
+                      Visibility="{Binding AutoCloseEmpty, Converter={StaticResource VisibilityConverter}}"
+                      ToolTip="Сутки, закрытые ИИ, анализируются заново: если теперь нужен человек — отметка проверки снимается, решение становится «Эскалация» (в тени — только сообщение). Сутки, закрытые человеком, не трогаются."/>
              <CheckBox Content="Агент"
                        VerticalAlignment="Center"
                        FontSize="14" Margin="0 0 8 0"

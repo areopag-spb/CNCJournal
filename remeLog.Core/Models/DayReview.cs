@@ -121,6 +121,12 @@ namespace remeLog.Models
         /// <summary> Значение ReviewedBy у суток, закрытых ИИ сам, без участия человека. </summary>
         public const string AutoReviewer = "ИИ-авто";
 
+        /// <summary>
+        /// ReviewedBy у суток, которые перепроверка ИИ вернула человеку (отметка снята, решение «Эскалация»).
+        /// Не равен <see cref="AutoReviewer"/>: иначе сутки по-прежнему считались бы закрытыми ИИ.
+        /// </summary>
+        public const string RecheckReviewer = "ИИ-перепроверка";
+
         /// <summary> Начало Comment у автозакрытых суток (по нему же строится история автозакрытия). </summary>
         public const string AutoCloseCommentMarker = "Автозакрытие:";
 

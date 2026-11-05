@@ -96,6 +96,19 @@ namespace remeLog.ViewModels
             }
         }
 
+        private bool _RecheckAiClosed;
+        /// <summary> Перепроверка: в список попадают и сутки, закрытые ИИ («ИИ-авто»); если теперь нужен человек,
+        /// отметка проверки снимается. Сутки, закрытые человеком, не трогаются. Не запоминается между запусками. </summary>
+        public bool RecheckAiClosed
+        {
+            get => _RecheckAiClosed;
+            set
+            {
+                if (Set(ref _RecheckAiClosed, value) && AutoCloseEmpty && !IsRunning)
+                    _ = RefreshListAsync();
+            }
+        }
+
         /// <summary> Режим тени автозакрытия: ничего не писать в БД (настройка клиента). </summary>
         public bool AutoCloseDryRun
         {
@@ -354,8 +367,15 @@ namespace remeLog.ViewModels
                 var night = g.FirstOrDefault(s => s.Shift == new Shift(ShiftType.Night).Name);
                 // Закрывать можно только при обоих отчётах; без них — не кандидат.
                 if (day is null || night is null) { noReports++; continue; }
-                // Уже зелёные в календаре проверки — пропускаем.
-                if (day.IsChecked && night.IsChecked) { closed++; continue; }
+                // Уже зелёные в календаре проверки — пропускаем. Исключение — перепроверка суток, закрытых
+                // самим ИИ: решение человека (в т.ч. отметка в календаре без ревью) не трогаем никогда.
+                var recheckItem = false;
+                if (day.IsChecked && night.IsChecked)
+                {
+                    recheckItem = RecheckAiClosed
+                        && reviews.TryGetValue((g.Key.Machine, g.Key.Date), out var aiReview) && aiReview.IsAutoClosed;
+                    if (!recheckItem) { closed++; continue; }
+                }
                 // Решение человека уже есть — не наше дело.
                 if (humanReviewed.Contains((g.Key.Machine, g.Key.Date))) { reviewed++; continue; }
                 // Рано: сутки ещё не созрели (то же правило, что у AutoCloseGate).
@@ -366,7 +386,8 @@ namespace remeLog.ViewModels
                     Date = g.Key.Date,
                     Machine = g.Key.Machine,
                     State = BatchItemState.Pending,
-                    Summary = "отчёты есть — к проверке",
+                    Summary = recheckItem ? "закрыто ИИ — к перепроверке" : "отчёты есть — к проверке",
+                    IsRecheck = recheckItem,
                 });
                 count++;
             }
@@ -603,6 +624,7 @@ namespace remeLog.ViewModels
                 {
                     Enabled = cfg.AutoCloseEnabled,
                     DryRun = cfg.AutoCloseDryRun,
+                    RecheckAiClosed = RecheckAiClosed,
                     MaxCloses = cfg.AutoCloseMaxPerRun,
                 });
         }
@@ -672,7 +694,13 @@ namespace remeLog.ViewModels
             {
                 case AutoCloseStatus.Closed:
                     item.State = BatchItemState.Done;
-                    item.Summary = $"закрыт ИИ{excluded}";
+                    item.Summary = item.IsRecheck ? $"перепроверка: закрытие подтверждено{excluded}" : $"закрыт ИИ{excluded}";
+                    break;
+                case AutoCloseStatus.Reopened:
+                    item.State = BatchItemState.Done;
+                    item.Summary = (AppSettings.Instance.AutoCloseDryRun
+                        ? "тень: перепроверка вернула бы человеку"
+                        : "перепроверка: возвращено человеку, отметка снята") + $" — {reasons}";
                     break;
                 case AutoCloseStatus.WouldClose:
                     item.State = BatchItemState.Done;
@@ -717,6 +745,9 @@ namespace remeLog.ViewModels
     internal class BatchItem : ViewModel
     {
         public int DayReviewId { get; set; }
+
+        /// <summary> Сутки уже закрыты ИИ и идут на перепроверку. </summary>
+        public bool IsRecheck { get; set; }
 
         public DateTime Date { get; set; }
 

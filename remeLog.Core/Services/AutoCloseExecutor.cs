@@ -83,11 +83,20 @@ namespace remeLog.Core.Services
 
         /// <summary> Кто запустил — в журнал решений. </summary>
         public string RunBy { get; init; } = Environment.UserName;
+
+        /// <summary>
+        /// Перепроверка: сутки, закрытые ИИ («ИИ-авто»), анализируются заново. Если теперь нужен человек —
+        /// отметка проверки снимается, решение становится «Эскалация»; если по-прежнему «ок» — закрытие
+        /// подтверждается (недостающие автоисключения оформляются). Сутки, закрытые человеком, не трогаются.
+        /// </summary>
+        public bool RecheckAiClosed { get; init; }
     }
 
     public enum AutoCloseStatus
     {
         Closed,
+        /// <summary> Перепроверка: закрытые ИИ сутки возвращены человеку (отметка снята); в тени — были бы возвращены. </summary>
+        Reopened,
         /// <summary> Режим тени: сутки были бы закрыты. </summary>
         WouldClose,
         Deferred,
@@ -174,6 +183,7 @@ namespace remeLog.Core.Services
                             AutoCloseStatus.WouldClose => AutoCloseLogEntry.OutcomeWouldClose,
                             AutoCloseStatus.Deferred => AutoCloseLogEntry.OutcomeDeferred,
                             AutoCloseStatus.Manual => AutoCloseLogEntry.OutcomeManual,
+                            AutoCloseStatus.Reopened => AutoCloseLogEntry.OutcomeReopened,
                             _ => AutoCloseLogEntry.OutcomeError,
                         },
                         Reasons = outcome.Reasons,
@@ -214,15 +224,22 @@ namespace remeLog.Core.Services
             var day = dayRead.IsOk ? dayRead.Value : null;
             var night = nightRead.IsOk ? nightRead.Value : null;
 
+            var bothChecked = day?.IsChecked == true && night?.IsChecked == true;
+            // Перепроверка касается только суток, закрытых самим ИИ; отметка человека в календаре без ревью
+            // «ИИ-авто» (existing == null) и решения человека остаются нетронутыми.
+            var recheck = _run.RecheckAiClosed && bothChecked && existing is { IsAutoClosed: true };
+
             var decision = AutoCloseGate.Evaluate(new AutoCloseRequest(
                 result, parts, day != null, night != null, date, _clock(),
                 AlreadyReviewedByHuman: existing != null && !existing.IsAutoClosed,
-                AlreadyChecked: day?.IsChecked == true && night?.IsChecked == true), _gate);
+                AlreadyChecked: bothChecked && !recheck), _gate);
 
             switch (decision.Outcome)
             {
                 case AutoCloseOutcome.Defer:
                     return new(AutoCloseStatus.Deferred, decision.Reasons);
+                case AutoCloseOutcome.Manual when recheck:
+                    return await ReopenAsync(machine, date, result, decision.Reasons, day!, night!, aiModel, thinkingEnabled);
                 case AutoCloseOutcome.Manual:
                     return new(AutoCloseStatus.Manual, decision.Reasons);
             }
@@ -237,6 +254,52 @@ namespace remeLog.Core.Services
             var closed = await CloseAsync(machine, date, result, parts, decision, day!, night!, aiModel, thinkingEnabled);
             if (closed.Status == AutoCloseStatus.Closed) _closed++;
             return closed;
+        }
+
+        /// <summary>
+        /// Закрытые ИИ сутки больше не проходят допуск: решение становится «Эскалация» (ревью от
+        /// <see cref="DayReview.RecheckReviewer"/>), отметка проверки снимается с обеих смен — календарь
+        /// краснеет, как после «Пропуска ИИ». Исключения, оформленные при прежнем закрытии, остаются
+        /// (они в журнале автоисключений и видны человеку). В тени — только сообщение.
+        /// </summary>
+        private async Task<AutoCloseResult> ReopenAsync(
+            string machine, DateTime date, AiAnalysisResult result, IReadOnlyList<string> reasons,
+            ShiftInfo day, ShiftInfo night, string? aiModel, bool thinkingEnabled)
+        {
+            if (_run.DryRun) return new(AutoCloseStatus.Reopened, reasons);
+
+            var comment = $"{DayReview.AutoCloseCommentMarker} перепроверка — нужен человек: {string.Join("; ", reasons)}";
+            var review = new DayReview(machine, date, DayReview.RecheckReviewer, AnalystDecision.Escalated, false, comment)
+            {
+                AiResult = result,
+                AiThinkingEnabled = thinkingEnabled,
+                AiModelVersion = aiModel,
+                AiFeedback = $"[ИИ {aiModel}/{result.PromptVersion}]",
+                AutoClosed = false,
+            };
+            var saved = await _store.SaveDayReviewAsync(review);
+            if (!saved.IsOk)
+                return new(AutoCloseStatus.Error, new[] { $"не записано ревью перепроверки: {saved.Error}" });
+
+            day.IsChecked = false;
+            var wroteDay = await _store.WriteShiftAsync(day);
+            if (!wroteDay.IsOk)
+            {
+                day.IsChecked = true;
+                return new(AutoCloseStatus.Error, new[] { $"не снята отметка дневной смены: {wroteDay.Error}" });
+            }
+
+            night.IsChecked = false;
+            var wroteNight = await _store.WriteShiftAsync(night);
+            if (!wroteNight.IsOk)
+            {
+                night.IsChecked = true;
+                day.IsChecked = true;
+                await _store.WriteShiftAsync(day);
+                return new(AutoCloseStatus.Error, new[] { $"не снята отметка ночной смены: {wroteNight.Error}" });
+            }
+
+            return new(AutoCloseStatus.Reopened, reasons);
         }
 
         private async Task<AutoCloseResult> CloseAsync(
