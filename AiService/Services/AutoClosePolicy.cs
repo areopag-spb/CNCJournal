@@ -80,11 +80,13 @@ public static class AutoClosePolicy
         {
             var key = $"{p.PartName}§{p.Setup}§{p.Order}";
             if (excluded.Contains(key)) continue;
+            // «Без М/Л» (и пустой заказ): норматива нет, КПД 0% — артефакт, в К1 такая строка не идёт.
+            if (!AgentTools.HasOrder(p.Order)) continue;
 
             var operatorExcuses = !string.IsNullOrWhiteSpace(p.OperatorComment)
                 && OperatorExcusableRx.IsMatch(p.OperatorComment);
 
-            var setupLow = p.SetupRatio is < 1.0 && !p.NoSetupHappened
+            var setupLow = p.SetupRatio is < 1.0 && !p.NoSetupHappened && p.SetupTimePlan > 0
                 && (LowKpdSetupReasons.Contains((p.MasterSetupComment ?? "").Trim(), StringComparer.OrdinalIgnoreCase)
                     || operatorExcuses);
             var machLow = p.ProductionRatio is < 1.0 && !p.NoProductionHappened

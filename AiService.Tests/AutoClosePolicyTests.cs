@@ -70,8 +70,21 @@ public class AutoCloseUnexcludedLowKpdTests
             SetupRatio = setupRatio, ProductionRatio = productionRatio,
             OperatorComment = operatorComment, MasterSetupComment = setupReason,
             MasterMachiningComment = machReason, NoSetupHappened = noSetup,
+            SetupTimePlan = 60,
         });
         return r;
+    }
+
+    [Fact] // SKT21 №104 11.10: «Без М/Л» с планом 0 — КПД 0% не настоящий, не блокирует
+    public void BezMlOrNoSetupPlan_DoesNotBlock()
+    {
+        var bez = Req(setupRatio: 0, operatorComment: "освоение");
+        bez.Parts[0].Order = "Без М/Л";
+        Assert.Empty(AutoClosePolicy.UnexcludedExplainedLowKpd(bez, null));
+
+        var noPlan = Req(setupRatio: 0, operatorComment: "освоение");
+        noPlan.Parts[0].SetupTimePlan = 0;
+        Assert.Empty(AutoClosePolicy.UnexcludedExplainedLowKpd(noPlan, null));
     }
 
     [Fact] // Mazak QTS200ML 26.10: оператор «освоение», мастер «Другое: ремонт»
