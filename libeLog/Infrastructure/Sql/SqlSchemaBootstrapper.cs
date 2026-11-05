@@ -273,6 +273,8 @@ namespace libeLog.Infrastructure.Sql
                 .AddStringColumn("Type", 50, false)
                 .AddIntColumn("SetupLimit", false)
                 .AddDoubleColumn("SetupCoefficient", false)
+                // Порог доли простоев для К1 (доля, 0.10 = 10%): меньше порога — коэффициент простоев 1.
+                .AddDoubleColumn("DowntimeLimit", false, 0.10)
                 // Профиль промпта для ИИ-анализа: AiService подставляет
                 // prompts/system_prompt.{профиль}.txt; NULL — базовый промпт.
                 .AddStringColumn("AiPromptProfile", 50)

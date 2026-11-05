@@ -68,6 +68,7 @@ namespace eLog.ViewModels
             SendMessageCommand = new LambdaCommand(OnSendMessageCommandExecuted, CanSendMessageCommandExecute);
             OpenAiChatCommand = new LambdaCommand(OnOpenAiChatCommandExecuted, CanOpenAiChatCommandExecute);
             OpenReferenceCommand = new LambdaCommand(OnOpenReferenceCommandExecuted, CanOpenReferenceCommandExecute);
+            OpenOperatorKpiCommand = new LambdaCommand(OnOpenOperatorKpiCommandExecuted, CanOpenOperatorKpiCommandExecute);
             ShowAboutCommand = new LambdaCommand(OnShowAboutCommandExecuted, CanShowAboutCommandExecute);
             TestCommand = new LambdaCommand(OnTestCommandExecuted, CanTestCommandExecute);
 
@@ -624,6 +625,19 @@ namespace eLog.ViewModels
             }
         }
         private bool CanOpenAiChatCommandExecute(object p) => true;
+        #endregion
+
+        #region OpenOperatorKpi
+        public ICommand OpenOperatorKpiCommand { get; }
+        private void OnOpenOperatorKpiCommandExecuted(object p)
+        {
+            using (Overlay = new())
+            {
+                var kpiWindow = new OperatorKpiWindow { Owner = Application.Current.MainWindow };
+                kpiWindow.ShowDialog();
+            }
+        }
+        private bool CanOpenOperatorKpiCommandExecute(object p) => AppSettings.Instance.CurrentOperator is not null;
         #endregion
 
         #region EditOperators

@@ -66,6 +66,9 @@
                     <MenuItem Header="Параметры" Icon="{StaticResource SettingsIcon}"
                               Command="{Binding EditSettingsCommand}" />
                 </MenuItem>
+                <MenuItem Header="Отчёты">
+                    <MenuItem Header="Мой К1" Command="{Binding OpenOperatorKpiCommand}"/>
+                </MenuItem>
                 <MenuItem Header="Справка">
                     <MenuItem Header="О программе" Icon="{StaticResource AboutIcon}"
                               Command="{Binding ShowAboutCommand}">

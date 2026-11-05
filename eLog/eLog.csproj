@@ -41,6 +41,7 @@
     
   <ItemGroup>
     <ProjectReference Include="..\libeLog\libeLog.csproj" />
+    <ProjectReference Include="..\remeLog.Core\remeLog.Core.csproj" />
   </ItemGroup>
     
   <ItemGroup>

@@ -1,0 +1,173 @@
+<Window x:Class="eLog.Views.Windows.Dialogs.OperatorKpiWindow" chrome:WindowChromeTheme.Enabled="True"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:chrome="clr-namespace:libeLog.Infrastructure;assembly=libeLog"
+        xmlns:vm="clr-namespace:eLog.ViewModels"
+        mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:OperatorKpiViewModel}"
+        Title="Мой К1" Height="560" Width="1080" MinHeight="420" MinWidth="980"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource Areopag.FontUI}" FontSize="16"
+        Background="{DynamicResource Areopag.Bg0}"
+        Foreground="{DynamicResource Areopag.Text}">
+    <Window.DataContext>
+        <vm:OperatorKpiViewModel/>
+    </Window.DataContext>
+    <Window.Resources>
+        <!-- Ширины колонок таблицы общие для шапки и строк -->
+        <GridLength x:Key="ColMachine">200</GridLength>
+        <GridLength x:Key="ColShifts">70</GridLength>
+        <GridLength x:Key="ColMarked">195</GridLength>
+        <GridLength x:Key="ColShare">80</GridLength>
+        <GridLength x:Key="ColGeneral">130</GridLength>
+        <GridLength x:Key="ColCoeff">80</GridLength>
+        <GridLength x:Key="ColDown">90</GridLength>
+        <GridLength x:Key="ColK1">80</GridLength>
+
+        <Style x:Key="Cell" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="4 0"/>
+        </Style>
+        <Style x:Key="HeadCell" TargetType="TextBlock" BasedOn="{StaticResource Cell}">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{DynamicResource Areopag.Text2}"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Оператор и период -->
+        <StackPanel Grid.Row="0" Margin="0 0 0 8">
+            <TextBlock Text="{Binding OperatorName}" FontSize="22" FontWeight="SemiBold" Margin="0 0 0 8"/>
+            <WrapPanel Orientation="Horizontal">
+                <TextBlock Text="с" VerticalAlignment="Center" Margin="0 0 6 0" Foreground="{DynamicResource Areopag.Text2}"/>
+                <DatePicker SelectedDate="{Binding FromDate}" Style="{StaticResource DatePickerOutlineStyle}" Width="150" Height="38" VerticalContentAlignment="Center"/>
+                <TextBlock Text="по" VerticalAlignment="Center" Margin="12 0 6 0" Foreground="{DynamicResource Areopag.Text2}"/>
+                <DatePicker SelectedDate="{Binding ToDate}" Style="{StaticResource DatePickerOutlineStyle}" Width="150" Height="38" VerticalContentAlignment="Center"/>
+                <ComboBox ItemsSource="{Binding Periods}" SelectedItem="{Binding SelectedPeriod}" DisplayMemberPath="Title"
+                          Width="240" Height="38" Margin="16 0 0 0" VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+                <Button Content="Рассчитать" Command="{Binding RefreshCommand}" Style="{StaticResource Areopag.PrimaryButton}" Margin="6 0 0 0" Padding="16 0" Height="38" VerticalAlignment="Center"/>
+            </WrapPanel>
+        </StackPanel>
+
+        <!-- Шапка таблицы -->
+        <Border Grid.Row="1" Background="{DynamicResource Areopag.Bg1}" BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1 1 1 0" Padding="6 6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource ColMachine}"/>
+                    <ColumnDefinition Width="{StaticResource ColShifts}"/>
+                    <ColumnDefinition Width="{StaticResource ColMarked}"/>
+                    <ColumnDefinition Width="{StaticResource ColShare}"/>
+                    <ColumnDefinition Width="{StaticResource ColGeneral}"/>
+                    <ColumnDefinition Width="{StaticResource ColCoeff}"/>
+                    <ColumnDefinition Width="{StaticResource ColDown}"/>
+                    <ColumnDefinition Width="{StaticResource ColCoeff}"/>
+                    <ColumnDefinition Width="{StaticResource ColK1}"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Станок" Style="{StaticResource HeadCell}" TextAlignment="Left"/>
+                <TextBlock Grid.Column="1" Text="Смены" Style="{StaticResource HeadCell}"/>
+                <TextBlock Grid.Column="2" Text="Отмечено" Style="{StaticResource HeadCell}"/>
+                <TextBlock Grid.Column="3" Text="Учтено" Style="{StaticResource HeadCell}"/>
+                <TextBlock Grid.Column="4" Text="Эффективность" Style="{StaticResource HeadCell}"/>
+                <TextBlock Grid.Column="5" Text="Коэфф. эфф." Style="{StaticResource HeadCell}"/>
+                <TextBlock Grid.Column="6" Text="Простои" Style="{StaticResource HeadCell}"/>
+                <TextBlock Grid.Column="7" Text="Коэфф. прост." Style="{StaticResource HeadCell}"/>
+                <TextBlock Grid.Column="8" Text="К1" Style="{StaticResource HeadCell}" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+
+        <!-- Строки: по одной на станок -->
+        <Border Grid.Row="2" BorderBrush="{DynamicResource Areopag.Line}" BorderThickness="1" Background="{DynamicResource Areopag.Input}">
+            <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Lines}" AlternationCount="2">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="RowBorder" Padding="6 8" BorderBrush="{DynamicResource Areopag.LineSoft}" BorderThickness="0 0 0 1">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="{StaticResource ColMachine}"/>
+                                                <ColumnDefinition Width="{StaticResource ColShifts}"/>
+                                                <ColumnDefinition Width="{StaticResource ColMarked}"/>
+                                                <ColumnDefinition Width="{StaticResource ColShare}"/>
+                                                <ColumnDefinition Width="{StaticResource ColGeneral}"/>
+                                                <ColumnDefinition Width="{StaticResource ColCoeff}"/>
+                                                <ColumnDefinition Width="{StaticResource ColDown}"/>
+                                                <ColumnDefinition Width="{StaticResource ColCoeff}"/>
+                                                <ColumnDefinition Width="{StaticResource ColK1}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Machine}" Style="{StaticResource Cell}" TextAlignment="Left" TextWrapping="Wrap"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Shifts}" Style="{StaticResource Cell}"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding MarkedTime}" Style="{StaticResource Cell}"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding IncludedShare}" Style="{StaticResource Cell}"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding General}" Style="{StaticResource Cell}"/>
+                                            <TextBlock Grid.Column="5" Text="{Binding EfficiencyCoefficient}" Style="{StaticResource Cell}"/>
+                                            <TextBlock Grid.Column="6" Text="{Binding Downtimes}" Style="{StaticResource Cell}"/>
+                                            <TextBlock Grid.Column="7" Text="{Binding DowntimeCoefficient}" Style="{StaticResource Cell}"/>
+                                            <TextBlock Grid.Column="8" Text="{Binding K1}" FontSize="20" FontWeight="Bold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Cell}">
+                                                        <Setter Property="Foreground" Value="{DynamicResource Areopag.Text3}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding K1Tone}" Value="Below">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Areopag.Alert}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding K1Tone}" Value="Equal">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Areopag.Text}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding K1Tone}" Value="Above">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Areopag.Ok}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                        <!-- Почему К1 не считается -->
+                                        <TextBlock Text="{Binding Reasons}" TextWrapping="Wrap" FontSize="13" Margin="4 4 0 0"
+                                                   Foreground="{DynamicResource Areopag.Alert}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Reasons}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                        <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource Areopag.RowAlt}"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <!-- Сообщение, когда строк нет -->
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center"
+                           HorizontalAlignment="Center" Margin="24" FontSize="18" Foreground="{DynamicResource Areopag.Text2}"/>
+            </Grid>
+        </Border>
+
+        <DockPanel Grid.Row="3" Margin="0 10 0 0" LastChildFill="False">
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="12" TextWrapping="Wrap" MaxWidth="760"
+                       Foreground="{DynamicResource Areopag.Text3}"
+                       Text="Предварительная оценка по данным за выбранный период. Итоговый К1 рассчитывается при формировании отчёта за расчётный период."/>
+            <Button DockPanel.Dock="Right" Content="Закрыть" IsCancel="True" Style="{StaticResource GeneralButton}" Padding="20 8"/>
+        </DockPanel>
+    </Grid>
+</Window>

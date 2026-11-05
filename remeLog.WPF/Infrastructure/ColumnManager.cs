@@ -701,6 +701,16 @@ namespace remeLog.Infrastructure
         public const string DowntimesCoefficient = "downtimesCoefficient";
 
         /// <summary>
+        /// К1, посчитанный приложением (значение, не формула) — для сверки с формулой в файле
+        /// </summary>
+        public const string CoefficientApp = "coefficientApp";
+
+        /// <summary>
+        /// Сверка формулы К1 в файле с расчётом приложения
+        /// </summary>
+        public const string CoefficientCheck = "coefficientCheck";
+
+        /// <summary>
         /// Тип
         /// </summary>
         public const string Type = "type";
@@ -924,6 +934,8 @@ namespace remeLog.Infrastructure
             { Coefficient, $"Коэффициент" },
             { EfficiencyCoefficient, $"Коэффициент эффективности" },
             { DowntimesCoefficient, $"Коэффициент простоев" },
+            { CoefficientApp, $"Коэффициент{Environment.NewLine}(расчёт приложения)" },
+            { CoefficientCheck, $"Сверка" },
             { Type, $"Тип" },
             { Description, $"Описание" },
             { YearCount, $"Годовая потребность" },

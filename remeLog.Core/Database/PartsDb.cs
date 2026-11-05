@@ -110,6 +110,31 @@ namespace remeLog.Infrastructure
             return parts;
         }
 
+        /// <summary>Отметки одного оператора за период по дате смены (включительно).</summary>
+        public async static Task<List<Part>> ReadPartsByOperator(string @operator, DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
+        {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return await Task.Run(() => DemoStore.GetParts(fromDate, toDate)
+                    .Where(p => p.Operator == @operator).ToList(), cancellationToken);
+            }
+            var parts = new List<Part>();
+            using (SqlConnection connection = new(DomainSettings.ConnectionString))
+            {
+                await connection.OpenAsync(cancellationToken);
+                const string query = "SELECT * FROM Parts WHERE ShiftDate BETWEEN @FromDate AND @ToDate AND Operator = @Operator ORDER BY StartSetupTime ASC;";
+                using (SqlCommand command = new(query, connection))
+                {
+                    command.Parameters.AddWithValue("@FromDate", fromDate);
+                    command.Parameters.AddWithValue("@ToDate", toDate);
+                    command.Parameters.AddWithValue("@Operator", @operator);
+                    await FillPartsAsync(parts, command, cancellationToken);
+                }
+            }
+            return parts;
+        }
+
         public async static Task<ObservableCollection<Part>> ReadPartsByShiftDate(DateTime fromDate, DateTime toDate, CancellationToken cancellationToken)
         {
             if (DomainSettings.DemoMode)

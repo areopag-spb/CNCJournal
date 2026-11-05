@@ -25,7 +25,6 @@ namespace remeLog.Infrastructure
     {
         private static readonly XLColor _lightRed = XLColor.FromHtml("#DA9694");
         private static readonly XLColor _lightGreen = XLColor.FromHtml("#96DA94");
-        const double MinimumIncludedTimeRatio = 0.3;
 
         /// <summary>
         /// Типы экспорта отчетов операторов.
@@ -193,119 +192,25 @@ namespace remeLog.Infrastructure
         }
 
         /// <summary>
-        /// Создает лист с коэффициентами для всех квалификаций
+        /// Создает лист с коэффициентами для всех квалификаций. Раскладка колонок задана в
+        /// <see cref="K1ExcelFormulas"/> — по ней же строятся ссылки в формулах отчёта.
         /// </summary>
         private static void CreateCoefficientsWorksheet(IXLWorksheet ws, IEnumerable<Qualification> qualifications)
         {
-            // Заголовки столбцов
-            ws.Cell("A1").SetValue("Квалификация");
+            var headers = K1ExcelFormulas.CoefficientHeaders;
+            for (var i = 0; i < headers.Count; i++)
+                ws.Cell(1, i + 1).SetValue(headers[i]);
 
-            // Эффективность - пороги
-            ws.Cell("B1").SetValue("EffHH_Value");
-            ws.Cell("C1").SetValue("EffH_Value");
-            ws.Cell("D1").SetValue("EffN_Value");
-            ws.Cell("E1").SetValue("EffL_Value");
-            ws.Cell("F1").SetValue("EffLL_Value");
-            ws.Cell("G1").SetValue("EffLLL_Value");
-
-            // Эффективность - коэффициенты
-            ws.Cell("H1").SetValue("EffHH_Coeff");
-            ws.Cell("I1").SetValue("EffH_Coeff");
-            ws.Cell("J1").SetValue("EffN_Coeff");
-            ws.Cell("K1").SetValue("EffL_Coeff");
-            ws.Cell("L1").SetValue("EffLL_Coeff");
-            ws.Cell("M1").SetValue("EffLLL_Coeff");
-
-            // Простои - пороги
-            ws.Cell("N1").SetValue("DownHH_Value");
-            ws.Cell("O1").SetValue("DownH_Value");
-            ws.Cell("P1").SetValue("DownN_Value");
-            ws.Cell("Q1").SetValue("DownL_Value");
-            ws.Cell("R1").SetValue("DownLL_Value");
-            ws.Cell("S1").SetValue("DownLLL_Value");
-
-            // Простои - коэффициенты
-            ws.Cell("T1").SetValue("DownHH_Coeff");
-            ws.Cell("U1").SetValue("DownH_Coeff");
-            ws.Cell("V1").SetValue("DownN_Coeff");
-            ws.Cell("W1").SetValue("DownL_Coeff");
-            ws.Cell("X1").SetValue("DownLL_Coeff");
-            ws.Cell("Y1").SetValue("DownLLL_Coeff");
-
-            // Эффективность - пороги (не серийные)
-            ws.Cell("Z1").SetValue("NEffHH_Value");
-            ws.Cell("AA1").SetValue("NEffH_Value");
-            ws.Cell("AB1").SetValue("NEffN_Value");
-            ws.Cell("AC1").SetValue("NEffL_Value");
-            ws.Cell("AD1").SetValue("NEffLL_Value");
-            ws.Cell("AE1").SetValue("NEffLLL_Value");
-
-            // Эффективность - коэффициенты (не серийные)
-            ws.Cell("AF1").SetValue("NEffHH_Coeff");
-            ws.Cell("AG1").SetValue("NEffH_Coeff");
-            ws.Cell("AH1").SetValue("NEffN_Coeff");
-            ws.Cell("AI1").SetValue("NEffL_Coeff");
-            ws.Cell("AJ1").SetValue("NEffLL_Coeff");
-            ws.Cell("AK1").SetValue("NEffLLL_Coeff");
-
-            // Заполняем данные
-            int row = 2;
+            var row = 2;
             foreach (var qual in qualifications.OrderBy(q => q.Value))
             {
-                ws.Cell(row, 1).SetValue(qual.Value); // Квалификация
-
-                // Пороги эффективности
-                ws.Cell(row, 2).SetValue(qual.Efficiency.HH.Value);
-                ws.Cell(row, 3).SetValue(qual.Efficiency.H.Value);
-                ws.Cell(row, 4).SetValue(qual.Efficiency.N.Value);
-                ws.Cell(row, 5).SetValue(qual.Efficiency.L.Value);
-                ws.Cell(row, 6).SetValue(qual.Efficiency.LL.Value);
-                ws.Cell(row, 7).SetValue(qual.Efficiency.LLL.Value);
-
-                // Коэффициенты эффективности
-                ws.Cell(row, 8).SetValue(qual.Efficiency.HH.Coefficient);
-                ws.Cell(row, 9).SetValue(qual.Efficiency.H.Coefficient);
-                ws.Cell(row, 10).SetValue(qual.Efficiency.N.Coefficient);
-                ws.Cell(row, 11).SetValue(qual.Efficiency.L.Coefficient);
-                ws.Cell(row, 12).SetValue(qual.Efficiency.LL.Coefficient);
-                ws.Cell(row, 13).SetValue(qual.Efficiency.LLL.Coefficient);
-
-                // Пороги простоев
-                ws.Cell(row, 14).SetValue(qual.DownTimes.HH.Value);
-                ws.Cell(row, 15).SetValue(qual.DownTimes.H.Value);
-                ws.Cell(row, 16).SetValue(qual.DownTimes.N.Value);
-                ws.Cell(row, 17).SetValue(qual.DownTimes.L.Value);
-                ws.Cell(row, 18).SetValue(qual.DownTimes.LL.Value);
-                ws.Cell(row, 19).SetValue(qual.DownTimes.LLL.Value);
-
-                // Коэффициенты простоев
-                ws.Cell(row, 20).SetValue(qual.DownTimes.HH.Coefficient);
-                ws.Cell(row, 21).SetValue(qual.DownTimes.H.Coefficient);
-                ws.Cell(row, 22).SetValue(qual.DownTimes.N.Coefficient);
-                ws.Cell(row, 23).SetValue(qual.DownTimes.L.Coefficient);
-                ws.Cell(row, 24).SetValue(qual.DownTimes.LL.Coefficient);
-                ws.Cell(row, 25).SetValue(qual.DownTimes.LLL.Coefficient);
-
-                // Пороги эффективности (не серийные)
-                ws.Cell(row, 26).SetValue(qual.NonSerialEfficiency.HH.Value);
-                ws.Cell(row, 27).SetValue(qual.NonSerialEfficiency.H.Value);
-                ws.Cell(row, 28).SetValue(qual.NonSerialEfficiency.N.Value);
-                ws.Cell(row, 29).SetValue(qual.NonSerialEfficiency.L.Value);
-                ws.Cell(row, 30).SetValue(qual.NonSerialEfficiency.LL.Value);
-                ws.Cell(row, 31).SetValue(qual.NonSerialEfficiency.LLL.Value);
-
-                // Коэффициенты эффективности (не серийные)
-                ws.Cell(row, 32).SetValue(qual.NonSerialEfficiency.HH.Coefficient);
-                ws.Cell(row, 33).SetValue(qual.NonSerialEfficiency.H.Coefficient);
-                ws.Cell(row, 34).SetValue(qual.NonSerialEfficiency.N.Coefficient);
-                ws.Cell(row, 35).SetValue(qual.NonSerialEfficiency.L.Coefficient);
-                ws.Cell(row, 36).SetValue(qual.NonSerialEfficiency.LL.Coefficient);
-                ws.Cell(row, 37).SetValue(qual.NonSerialEfficiency.LLL.Coefficient);
+                var values = K1ExcelFormulas.CoefficientRow(qual);
+                for (var i = 0; i < values.Count; i++)
+                    ws.Cell(row, i + 1).SetValue(values[i]);
                 row++;
             }
 
-            // Форматируем заголовки
-            var headerRange = ws.Range("A1:Y1");
+            var headerRange = ws.Range(1, 1, 1, headers.Count);
             headerRange.Style.Font.Bold = true;
             headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             headerRange.Style.Fill.BackgroundColor = XLColor.LightGray;
@@ -463,26 +368,6 @@ namespace remeLog.Infrastructure
                 .Font.SetBold(bold == BoldOption.Right || bold == BoldOption.Both)
                 .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right)
                 .Alignment.SetWrapText(false);
-        }
-
-        static bool IsInvalidRatio(double ratio) =>
-            ratio == 0 || double.IsInfinity(ratio) || double.IsNaN(ratio);
-
-        static TimeSpan NotExcludedTime(Part part, bool includeSmallBatch)
-        {
-            var span = TimeSpan.Zero;
-            if (!part.ExcludeFromReports)
-            {
-                if (part.SetupRatio is not (0 or double.NaN or double.NegativeInfinity or double.PositiveInfinity))
-                {
-                    span = span.Add(TimeSpan.FromMinutes(part.SetupTimeFact)).Add(TimeSpan.FromMinutes(part.SetupDowntimes));
-                }
-                if (!IsInvalidRatio(part.ProductionRatio) && (includeSmallBatch || !part.IsSmallBatch))
-                {
-                    span = span.Add(TimeSpan.FromMinutes(part.ProductionTimeFact)).Add(TimeSpan.FromMinutes(part.MachiningDowntimes));
-                }
-            }
-            return span;
         }
     }
 }

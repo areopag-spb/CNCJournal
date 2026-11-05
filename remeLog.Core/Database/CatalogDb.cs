@@ -205,6 +205,28 @@ namespace remeLog.Infrastructure
         }
 
         /// <summary>
+        /// Свойства станков, влияющие на К1: серийность и граница простоев (cnc_machines.IsSerial, DowntimeLimit).
+        /// При сбое БД — пустой словарь (станки считаются несерийными, как и в прежних отчётах).
+        /// </summary>
+        public async static Task<Dictionary<string, MachineProfile>> GetMachineProfilesAsync(IProgress<string>? progress = null)
+        {
+            if (DomainSettings.DemoMode) return new Dictionary<string, MachineProfile>();
+            try
+            {
+                progress?.Report("Чтение данных о станках...");
+                await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
+                var rows = await conn.QueryAsync<(string Name, bool IsSerial, double DowntimeLimit)>(
+                    "SELECT Name, IsSerial, DowntimeLimit FROM cnc_machines");
+                return rows.ToDictionary(r => r.Name, r => new MachineProfile(r.IsSerial, r.DowntimeLimit));
+            }
+            catch (Exception ex)
+            {
+                Log.WriteError(ex, null);
+                return new Dictionary<string, MachineProfile>();
+            }
+        }
+
+        /// <summary>
         /// Серийность станка с явным дефолтом на случай сбоя БД. В отличие от
         /// GetMachineSerialStatus (дефолт false для отчётов), здесь дефолт true:
         /// для ИИ-контура сбой не должен тихо выключать проверку КПД изготовления.
@@ -336,6 +358,32 @@ namespace remeLog.Infrastructure
                 Log.WriteError(ex, null);
                 return DbResult<WncConfig>.FailWithError(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Настройки, нужные только для расчёта К1: праздники (рабочие дни периода) и лимиты КПД наладки по станкам.
+        /// В отличие от <see cref="UpdateAppSettings"/> ничего больше не трогает и не сохраняет — для eLog.
+        /// </summary>
+        public static async Task LoadKpiSettingsAsync()
+        {
+            if (DomainSettings.DemoMode)
+            {
+                DemoStore.EnsureInitialized();
+                return;
+            }
+            await using var conn = await DbHelper.OpenConnectionAsync(DomainSettings.ConnectionString);
+
+            var holidays = (await conn.QueryAsync<DateTime?>("SELECT Holidays FROM cnc_remelog_config WHERE Holidays IS NOT NULL"))
+                .Where(h => h.HasValue).Select(h => h!.Value).ToArray();
+            DomainSettings.Holidays = holidays;
+
+            var maxSetup = await conn.QueryFirstOrDefaultAsync<double?>("SELECT TOP 1 max_setup_limit FROM cnc_remelog_config WHERE max_setup_limit IS NOT NULL");
+            if (maxSetup.HasValue) DomainSettings.MaxSetupLimit = maxSetup.Value;
+
+            DomainSettings.MaxSetupLimits.Clear();
+            var limits = await conn.QueryAsync<(string Name, double SetupCoefficient)>("SELECT Name, SetupCoefficient FROM cnc_machines");
+            foreach (var (name, coeff) in limits)
+                DomainSettings.MaxSetupLimits[name] = coeff;
         }
 
         public static async Task UpdateAppSettings()
