@@ -146,7 +146,10 @@ public static class HardRuleEvaluator
             // комбобокс-причины, требующие участия технологов
             // Проверяем MasterSetupComment и MasterMachiningComment по фиксированному списку.
             // "Отсутствие нормативов" — только если есть заказ (доработка без норматива — норма).
-            if (!string.IsNullOrWhiteSpace(p.MasterSetupComment)
+            // Причину поставил аналитик (переопределение СГТ): решение принято, возвращать
+            // ему же день из-за его собственной отметки бессмысленно (SKT21 №104 21.10).
+            if (string.IsNullOrWhiteSpace(p.SetupReasonOverride)
+                && !string.IsNullOrWhiteSpace(p.MasterSetupComment)
                 && EscalationReasons.Contains(p.MasterSetupComment))
             {
                 if (p.MasterSetupComment.Equals(MissingNormativesReason, StringComparison.OrdinalIgnoreCase)
@@ -162,7 +165,8 @@ public static class HardRuleEvaluator
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(p.MasterMachiningComment)
+            if (string.IsNullOrWhiteSpace(p.MachiningReasonOverride)
+                && !string.IsNullOrWhiteSpace(p.MasterMachiningComment)
                 && EscalationReasons.Contains(p.MasterMachiningComment)
                 // Несерийный станок: «норматив неточный/отсутствует» пропускаем —
                 // это спор о времени, которое здесь не учитывается. «не по

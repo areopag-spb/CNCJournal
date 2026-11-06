@@ -80,6 +80,23 @@ public class HardRuleFlaggedTests
         Assert.Contains("Седло§2§З1§#1", result.HardFlaggedPartKeys);
     }
 
+    [Theory] // SKT21 №104 21.10: причину поставил аналитик — день не возвращается ему по этой причине
+    [InlineData("Некорректное заполнение")]
+    [InlineData("Некорректные нормативы")]
+    [InlineData("Изготовление не по техпроцессу")]
+    public void Evaluate_AnalystOverriddenEscalationReason_NoHard_ButMasterOwnStays(string reason)
+    {
+        PartContext Part(string setupOverride) => new()
+        {
+            PartName = "Седло", Order = "З1", Setup = 2,
+            SetupTimePlan = 29, SetupTimeFact = 29, SingleProductionTimePlan = 7,
+            MasterSetupComment = reason, SetupReasonOverride = setupOverride,
+        };
+
+        Assert.False(HardRuleEvaluator.Evaluate(Request(Part(reason))).MustEscalate);
+        Assert.True(HardRuleEvaluator.Evaluate(Request(Part(""))).MustEscalate);
+    }
+
     private static PartContext LowKpdPart() => new()
     {
         PartName = "Деталь",
