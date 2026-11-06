@@ -1851,7 +1851,9 @@ namespace remeLog.Models
             // числовую аномалию, что бессмысленно и путает модель (найдено на проде: деталь
             // с MasterSetupComment=«Освоение», MasterSetupDetail=«деталь с квазера» — модель
             // проверяла «Освоение» как «комментарий», деталь-детализацию не видела как ответ).
-            if (!IsSelfSufficientReason(MasterSetupComment, SetupReasonsRequireComment))
+            // Причину категории переопределил аналитик: заполнение мастера заменено решением СГТ,
+            // просить у мастера пояснений по этой категории не нужно.
+            if (!HasSetupReasonOverride && !IsSelfSufficientReason(MasterSetupComment, SetupReasonsRequireComment))
             {
                 if (SetupTimePlanForCalc <= 0 && HasOrder)
                     result.Add((nameof(MasterSetupDetail), "Отсутствует норматив наладки при реальном заказе"));
@@ -1861,7 +1863,7 @@ namespace remeLog.Models
                     result.Add((nameof(MasterSetupDetail), $"Частичная наладка {PartialSetupTime:0} мин превышает норматив {SetupTimePlanForCalc:0} мин"));
             }
 
-            if (!IsSelfSufficientReason(MasterMachiningComment, MachiningReasonsRequireComment))
+            if (!HasMachiningReasonOverride && !IsSelfSufficientReason(MasterMachiningComment, MachiningReasonsRequireComment))
             {
                 if (ProductionTimePlanForCalc <= 0 && HasOrder)
                     result.Add((nameof(MasterMachiningDetail), "Отсутствует норматив изготовления при реальном заказе"));
@@ -1869,9 +1871,9 @@ namespace remeLog.Models
                     result.Add((nameof(MasterMachiningDetail), $"КПД изготовления {ProductionRatio:0%} вне нормы (70–120%)"));
             }
 
-            if (RequiresComment(MasterSetupComment, SetupReasonsRequireComment))
+            if (!HasSetupReasonOverride && RequiresComment(MasterSetupComment, SetupReasonsRequireComment))
                 result.Add((nameof(MasterSetupDetail), $"Причина отклонения в наладке «{MasterSetupComment}» требует уточнения в комментарии"));
-            if (RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment))
+            if (!HasMachiningReasonOverride && RequiresComment(MasterMachiningComment, MachiningReasonsRequireComment))
                 result.Add((nameof(MasterMachiningDetail), $"Причина отклонения в изготовлении «{MasterMachiningComment}» требует уточнения в комментарии"));
 
             if (SpecifiedDowntimesRatio > 0.5)

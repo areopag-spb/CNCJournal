@@ -6,8 +6,8 @@ namespace remeLog.Core.Tests;
 /// <summary>
 /// Валидация ввода (IDataErrorInfo, «восклицательные знаки») проверяет ИТОГОВУЮ причину:
 /// решение СГТ при наличии переопределения, иначе отметку мастера.
-/// Построчная ИИ-проверка мастера (GetAiCheckAnomalies) при этом по-прежнему
-/// работает только по отметкам мастера.
+/// Построчная ИИ-проверка мастера (GetAiCheckAnomalies) категории, причину которой
+/// переопределил СГТ, пропускает: заполнение мастера заменено решением аналитика.
 /// </summary>
 public class PartValidationOverrideTests
 {
@@ -125,17 +125,20 @@ public class PartValidationOverrideTests
     }
 
     [Fact]
-    public void AiCheckAnomalies_StillMasterBased()
+    public void AiCheckAnomalies_OverriddenCategoryIsSkipped_OtherStays()
     {
-        // Построчная проверка мастера смотрит только отметки мастера,
-        // переопределение СГТ на неё не влияет.
-        var part = BuildPart();
-        var before = part.GetAiCheckAnomalies().Count;
-        Assert.True(before > 0);
+        // Категория, причину которой переопределил СГТ, в проверку мастера не идёт
+        // (его заполнение заменено решением аналитика); соседняя категория остаётся.
+        var part = BuildPart(masterSetupComment: "Другое", masterMachiningComment: "Другое");
+        var before = part.GetAiCheckAnomalies();
+        Assert.Contains(before, a => a.Field == nameof(Part.MasterSetupDetail));
+        Assert.Contains(before, a => a.Field == nameof(Part.MasterMachiningDetail));
 
         part.SetupReasonOverride = "Отсутствие нормативов";
         part.ReasonOverrideBy = "tester";
 
-        Assert.Equal(before, part.GetAiCheckAnomalies().Count);
+        var after = part.GetAiCheckAnomalies();
+        Assert.DoesNotContain(after, a => a.Field == nameof(Part.MasterSetupDetail));
+        Assert.Contains(after, a => a.Field == nameof(Part.MasterMachiningDetail));
     }
 }
