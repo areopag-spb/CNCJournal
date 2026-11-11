@@ -377,3 +377,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Складская выгрузка (реальные остатки), в репозитории не хранится; путь задаётся Stock:File
+AiService/docs/stock.csv
