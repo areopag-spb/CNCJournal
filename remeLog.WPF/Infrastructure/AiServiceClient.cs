@@ -159,6 +159,13 @@ namespace remeLog.Infrastructure
                     model = AppSettings.AiModel,
                 };
 
+                // Та же строка в том же состоянии уже проверена в этом сеансе: окно суток
+                // перезагружает строки при каждом открытии и сохранении, и одна запись уходила
+                // на сервер десятки раз (ноябрь 2026: до 369 запросов на станко-сутки).
+                var memoKey = VerifyMemoKey(request);
+                if (TryGetVerifyMemo(memoKey) is { } remembered)
+                    return remembered;
+
                 // Не держим строку заложницей 300-секундного таймаута статического клиента:
                 // задержка в очереди Ollama (дневной анализ) тоже съедает этот бюджет.
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -169,6 +176,8 @@ namespace remeLog.Infrastructure
                 response.EnsureSuccessStatusCode();
                 var result = await response.Content
                     .ReadFromJsonAsync<AiVerifyResult>(cancellationToken: cts.Token);
+                if (result is { HasError: false })
+                    RememberVerify(memoKey, result);
                 return result ?? new AiVerifyResult { Ok = true, Error = "Пустой ответ сервиса" };
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -183,6 +192,31 @@ namespace remeLog.Infrastructure
             {
                 return new AiVerifyResult { Ok = true, Error = $"Ошибка связи с AI сервисом: {ex.Message}" };
             }
+        }
+
+        // ── Память результатов verify-part на сеанс приложения ──
+        // Ключ — отпечаток всего запроса (строка, история, аномалии, модель): любое изменение
+        // данных даёт новый ключ. Ошибки не запоминаются. Срок ограничен, чтобы смена промпта
+        // на сервере дошла до клиента без перезапуска.
+        private static readonly TimeSpan VerifyMemoTtl = TimeSpan.FromHours(2);
+        private const int VerifyMemoMaxEntries = 2000;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (AiVerifyResult Result, DateTime At)>
+            _verifyMemo = new();
+
+        internal static string VerifyMemoKey(object request) =>
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request))));
+
+        internal static AiVerifyResult? TryGetVerifyMemo(string key) =>
+            _verifyMemo.TryGetValue(key, out var entry) && DateTime.UtcNow - entry.At <= VerifyMemoTtl
+                ? entry.Result
+                : null;
+
+        internal static void RememberVerify(string key, AiVerifyResult result)
+        {
+            if (_verifyMemo.Count >= VerifyMemoMaxEntries)
+                _verifyMemo.Clear();
+            _verifyMemo[key] = (result, DateTime.UtcNow);
         }
 
         private async Task<AiAnalysisResult> AnalyzeSimpleAsync(
@@ -808,6 +842,8 @@ namespace remeLog.Infrastructure
         [JsonPropertyName("remark")] public string Remark { get; set; } = "";
         [JsonPropertyName("error")] public string? Error { get; set; }
         [JsonPropertyName("promptVersion")] public string? PromptVersion { get; set; }
+        [JsonPropertyName("suggestedReason")] public string? SuggestedReason { get; set; }
+        [JsonPropertyName("suggestedField")] public string? SuggestedField { get; set; }
         public bool HasError => !string.IsNullOrEmpty(Error);
     }
 

@@ -294,6 +294,7 @@ namespace remeLog.ViewModels
                 // валидация берёт своё, ИИ-статус сбрасываем.
                 part.AiCheckStatus = AiCheckStatus.None;
                 part.AiCheckRemark = string.Empty;
+                part.SetAiCheckSuggestion(null, null);
                 return;
             }
 
@@ -347,16 +348,23 @@ namespace remeLog.ViewModels
                     {
                         part.AiCheckStatus = AiCheckStatus.Error;
                         part.AiCheckRemark = $"ИИ-проверка недоступна: {result.Error}";
+                        part.SetAiCheckSuggestion(null, null);
                     }
                     else if (result.Ok)
                     {
                         part.AiCheckStatus = AiCheckStatus.Ok;
                         part.AiCheckRemark = string.Empty;
+                        part.SetAiCheckSuggestion(null, null);
                     }
                     else
                     {
                         part.AiCheckStatus = AiCheckStatus.Remark;
-                        part.AiCheckRemark = result.Remark;
+                        part.SetAiCheckSuggestion(result.SuggestedReason, result.SuggestedField);
+                        // Предложение принимается из контекстного меню ячейки — подсказываем это в tooltip.
+                        part.AiCheckRemark = string.IsNullOrEmpty(part.AiCheckSuggestedReason)
+                            ? result.Remark
+                            : result.Remark + Environment.NewLine
+                                + $"Правый клик — сменить причину на «{part.AiCheckSuggestedReason}».";
                     }
                 });
             }

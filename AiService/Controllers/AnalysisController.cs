@@ -398,6 +398,25 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             if (request.Anomalies.Count == 0)
                 return Ok(new VerifyPartResponse { Ok = true });
 
+            // Причина про нормативы при комментарии, называющем отклонение от техпроцесса, —
+            // до автоодобрения: иначе самодостаточная причина закрывает строку без вопросов.
+            if (MasterCheckGuards.CheckNormativeReasonContradiction(request.Part, request.Anomalies) is { } contradiction)
+            {
+                var contradictionResult = new VerifyPartResponse
+                {
+                    Ok = false,
+                    Remark = contradiction.Remark,
+                    PromptVersion = "known-pattern",
+                    SuggestedReason = contradiction.SuggestedReason,
+                    SuggestedField = contradiction.SuggestedField,
+                };
+                logger.LogInformation(
+                    "Verify-part: {Machine} {Date} «{Part}» → Ok=false (гард, причина про нормативы при отклонении от техпроцесса)",
+                    request.Machine, request.ShiftDate, request.Part.PartName);
+                await requestLog.WriteVerifyAsync(request, contradictionResult);
+                return Ok(contradictionResult);
+            }
+
             // Аномалии, целиком покрытые самодостаточными причинами («Освоение»,
             // «Отсутствие/Некорректные нормативов»), не требуют обращения к модели —
             // см. MasteringAutoApprover.IsAnomalyFieldSelfSufficient.
@@ -414,9 +433,17 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
             // Массовые пустые формулировки с устойчивым вердиктом (M4 «нет норм»,
             // «ТП на 230», «работа с технологом»): модель на них флипает между
             // запусками — см. MasterCheckGuards. Совпадение — вердикт без модели.
-            if (MasterCheckGuards.CheckKnownFalsePattern(request.Part, request.Anomalies) is { } guardRemark)
+            if (MasterCheckGuards.Check(request.Part, request.Anomalies) is { } guardHit)
             {
-                var guardResult = new VerifyPartResponse { Ok = false, Remark = guardRemark, PromptVersion = "known-pattern" };
+                var guardRemark = guardHit.Remark;
+                var guardResult = new VerifyPartResponse
+                {
+                    Ok = false,
+                    Remark = guardRemark,
+                    PromptVersion = "known-pattern",
+                    SuggestedReason = guardHit.SuggestedReason,
+                    SuggestedField = guardHit.SuggestedField,
+                };
                 logger.LogInformation(
                     "Verify-part: {Machine} {Date} «{Part}» → Ok=false (гард, известный паттерн): {Remark}",
                     request.Machine, request.ShiftDate, request.Part.PartName, guardRemark);
@@ -891,7 +918,7 @@ public class AnalysisController(OllamaService ollama, PromptBuilder promptBuilde
         if (hardRules.MustEscalate && result.SuggestExcludeFromReports.Count > 0)
         {
             var hardPartNames = hardRules.HardSignals
-                .Where(s => s.StartsWith('['))
+                .Where(s => s.StartsWith('[') && s.IndexOf(']') > 1)
                 .Select(s => s[1..s.IndexOf(']')])
                 .ToHashSet();
             result.SuggestExcludeFromReports = [.. result.SuggestExcludeFromReports

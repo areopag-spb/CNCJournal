@@ -121,6 +121,10 @@ public class AgentTrace
     /// один раз попросил запросить его (см. AgentLoopService.ContextNudgeReasons).
     /// </summary>
     public bool ContextNudged { get; set; }
+    /// <summary> Сколько причин приложено к сообщению со смыслом из справочника (Agent:InlineReasonSemantics). </summary>
+    public int ReasonsInlined { get; set; }
+    /// <summary> true — модель не вызывалась: судить было нечего (Agent:SkipModelWhenNothingToJudge). </summary>
+    public bool ModelSkipped { get; set; }
     /// <summary>
     /// Сырой вердикт базы (до верифаеров и downstream-фильтров). Нужен, чтобы
     /// задним числом отличить «база сказала False» от «база сказала True,

@@ -36,4 +36,13 @@ public class VerifyPartResponse
     public string Remark { get; set; } = "";
     public string? Error { get; set; }
     public string? PromptVersion { get; set; }
+
+    /// <summary>
+    /// Причина из справочника, на которую стоит сменить выбранную (замечание «неверно выбрана
+    /// причина»): клиент предлагает замену одним действием. null — предложения нет.
+    /// </summary>
+    public string? SuggestedReason { get; set; }
+
+    /// <summary> Поле причины, к которому относится SuggestedReason (MasterSetupComment / MasterMachiningComment). </summary>
+    public string? SuggestedField { get; set; }
 }

@@ -187,6 +187,126 @@ public class AgentLoopServiceTests
     }
 
     [Fact]
+    public async Task InlineReasons_PutSemanticsIntoMessage_AndSkipNudge()
+    {
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+
+        var outcome = await Service(stub, Config(("Agent:InlineReasonSemantics", "true")))
+            .AnalyzeAsync(RequestWithSignal(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Equal(1, stub.Calls);
+        Assert.False(outcome.Trace.ContextNudged);
+        Assert.Equal(1, outcome.Trace.ReasonsInlined);
+        var user = stub.SeenMessages[0].First(m => m.Role == "user").Content!;
+        Assert.Contains("Смысл причин отклонения", user);
+        Assert.Contains("наладка: «Освоение»", user);
+        Assert.Contains("ЛЮБУЮ аномалию наладки", user);
+    }
+
+    [Fact]
+    public async Task InlineReasons_NothingToInline_MessageUnchanged()
+    {
+        // Без сигналов на детали и при hard-дне приложить нечего: сообщение как без флага.
+        var plain = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        await Service(plain).AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+        var inline = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        var outcome = await Service(inline, Config(("Agent:InlineReasonSemantics", "true")))
+            .AnalyzeAsync(Request(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.Equal(0, outcome.Trace.ReasonsInlined);
+        Assert.Equal(
+            plain.SeenMessages[0].First(m => m.Role == "user").Content,
+            inline.SeenMessages[0].First(m => m.Role == "user").Content);
+
+        var hardStub = new StubChat(_ => new ChatResult { Content = """{"requires_review":true}""" });
+        var hard = new HardRuleResult(["[Д] hard"], []);
+        var decided = await Service(hardStub, Config(("Agent:InlineReasonSemantics", "true")))
+            .AnalyzeAsync(RequestWithSignal(), hard, NoShift, CancellationToken.None);
+        Assert.Equal(0, decided.Trace.ReasonsInlined);
+        Assert.DoesNotContain("Смысл причин отклонения",
+            hardStub.SeenMessages[0].First(m => m.Role == "user").Content);
+    }
+
+    [Fact]
+    public async Task InlineReasons_OffByDefault_NudgeStillWorks()
+    {
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+
+        var outcome = await Service(stub).AnalyzeAsync(RequestWithSignal(), NoHard, NoShift, CancellationToken.None);
+
+        Assert.True(outcome.Trace.ContextNudged);
+        Assert.Equal(0, outcome.Trace.ReasonsInlined);
+        Assert.DoesNotContain("Смысл причин отклонения",
+            stub.SeenMessages[0].First(m => m.Role == "user").Content);
+    }
+
+    private static AnalyzeRequest EmptyDay(params ShiftReportContext[] reports)
+    {
+        var req = Request();
+        req.Parts = [];
+        req.DowntimeReasons = ["Нет заказов", "Другое"];
+        req.ShiftReports = [.. reports];
+        return req;
+    }
+
+    private static ShiftReportContext FullDowntime(string shift, string reason, string comment = "") => new()
+    {
+        Shift = shift,
+        ReportExists = true,
+        ShiftMinutes = 660,
+        FreshUnspecifiedDowntimes = 660,
+        StoredUnspecifiedDowntimes = 660,
+        DowntimeReason = reason,
+        MasterComment = comment,
+        Master = "Мастер М.М.",
+        HasParts = false,
+    };
+
+    [Fact]
+    public async Task SkipModel_EmptyDayDecidedBySystem_NoModelCall()
+    {
+        var stub = new StubChat(_ => throw new InvalidOperationException("модель не должна вызываться"));
+        var req = EmptyDay(FullDowntime("День", "Нет заказов"), FullDowntime("Ночь", "Нет заказов"));
+
+        var outcome = await Service(stub, Config(("Agent:SkipModelWhenNothingToJudge", "true")))
+            .AnalyzeAsync(req, NoHard, ShiftReportRuleEvaluator.Evaluate(req), CancellationToken.None);
+
+        Assert.Equal(0, stub.Calls);
+        Assert.True(outcome.Trace.ModelSkipped);
+        Assert.False(outcome.Trace.FellBack);
+        Assert.Equal(AgentLoopService.NothingToJudgeJson, outcome.FinalJson);
+        Assert.False(outcome.Trace.BaseRequiresReview);
+    }
+
+    [Fact]
+    public async Task SkipModel_NotApplied_WhenModelMustJudgeOrFlagOff()
+    {
+        // Частичный простой с причиной и комментарием — релевантность судит модель.
+        var partial = FullDowntime("День", "Нет заказов", "ждали заготовки");
+        partial.FreshUnspecifiedDowntimes = 300;
+        partial.StoredUnspecifiedDowntimes = 300;
+        var needsModel = EmptyDay(partial, FullDowntime("Ночь", "Нет заказов"));
+        Assert.Contains(ShiftReportRuleEvaluator.AgentPreverdicts(needsModel, ShiftReportRuleEvaluator.Evaluate(needsModel)),
+            p => p.NeedsModel);
+        Assert.False(AgentLoopService.NothingToJudge(needsModel, ShiftReportRuleEvaluator.Evaluate(needsModel)));
+
+        // Есть записи — судит модель.
+        Assert.False(AgentLoopService.NothingToJudge(Request(), NoShift));
+
+        // Есть сигнал дня — судит модель.
+        var withDaySignal = EmptyDay(FullDowntime("День", "Нет заказов"));
+        withDaySignal.Signals = ["сигнал дня"];
+        Assert.False(AgentLoopService.NothingToJudge(withDaySignal, ShiftReportRuleEvaluator.Evaluate(withDaySignal)));
+
+        // Флаг выключен (дефолт) — модель вызывается как раньше.
+        var stub = new StubChat(_ => new ChatResult { Content = """{"requires_review":false}""" });
+        var req = EmptyDay(FullDowntime("День", "Нет заказов"));
+        var outcome = await Service(stub).AnalyzeAsync(req, NoHard, ShiftReportRuleEvaluator.Evaluate(req), CancellationToken.None);
+        Assert.Equal(1, stub.Calls);
+        Assert.False(outcome.Trace.ModelSkipped);
+    }
+
+    [Fact]
     public void NudgeReasons_NonSerial_SkipsMachining()
     {
         var req = RequestWithSignal();

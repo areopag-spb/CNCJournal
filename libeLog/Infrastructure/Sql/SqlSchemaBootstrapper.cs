@@ -226,7 +226,8 @@ namespace libeLog.Infrastructure.Sql
                 // переименовании причины в справочнике её нужно поправить и в этих местах.
                 .AddDefaultRow(new { Reason = "", Type = (string?)null, RequireComment = false })
                 .AddDefaultRow(new { Reason = "Другое", Type = (string?)null, RequireComment = true })
-                .AddDefaultRow(new { Reason = "Отсутствие нормативов", Type = (string?)null, RequireComment = false })
+                // Только наладка: норматив изготовления отсутствовать не может (регламент, п. 4.2).
+                .AddDefaultRow(new { Reason = "Отсутствие нормативов", Type = (string?)"Setup", RequireComment = false })
                 .AddDefaultRow(new { Reason = "Некорректные нормативы", Type = (string?)null, RequireComment = false })
                 .AddDefaultRow(new { Reason = "Неопытный оператор", Type = (string?)null, RequireComment = false })
                 .AddDefaultRow(new { Reason = "Работа ученика", Type = (string?)null, RequireComment = false })
@@ -239,6 +240,7 @@ namespace libeLog.Infrastructure.Sql
                 .AddDefaultRow(new { Reason = "Изготовление типовой детали", Type = "Setup", RequireComment = false })
                 .AddDefaultRow(new { Reason = "Разовое изменение времени из-за проблем с инструментом/оборудованием", Type = "Machining", RequireComment = true })
                 .AddDefaultRow(new { Reason = "Несоответствующие заготовки", Type = "Machining", RequireComment = false })
+                .AddDefaultRow(new { Reason = "Двустаночное обслуживание", Type = (string?)null, RequireComment = false })
                 .AddDefaultRow(new { Reason = "Доработка", Type = (string?)null, RequireComment = true })
                 .Build(),
 

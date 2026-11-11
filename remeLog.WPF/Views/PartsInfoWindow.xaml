@@ -738,7 +738,12 @@
                     <Grid Background="Transparent">
                         <Grid.Style>
                             <Style TargetType="Grid">
+                                <!-- Меню с предложением замены причины; без предложения меню нет. -->
+                                <Setter Property="ContextMenu" Value="{DynamicResource AiCheckSuggestionContextMenu}"/>
                                 <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AiCheckSuggestedReason}" Value="">
+                                        <Setter Property="ContextMenu" Value="{x:Null}"/>
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding AiCheckStatus}" Value="Ok">
                                         <Setter Property="ToolTip" Value="ИИ: комментарии релевантны"/>
                                     </DataTrigger>
@@ -981,6 +986,16 @@
         </ContextMenu>
 
         <ContextMenu x:Key="EngeneerCommentCellContextMenu"/>
+
+        <!-- Предложение ИИ-проверки сменить причину (ячейка «ИИ»): строка берётся из ячейки, на которой открыто меню. -->
+        <ContextMenu x:Key="AiCheckSuggestionContextMenu"
+                     DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+            <MenuItem Click="OnApplyAiCheckSuggestionClick">
+                <MenuItem.Header>
+                    <TextBlock Text="{Binding AiCheckSuggestedReason, StringFormat=Сменить причину на «{0}»}"/>
+                </MenuItem.Header>
+            </MenuItem>
+        </ContextMenu>
 
         <ContextMenu x:Key="EditingTextBoxContextMenu">
             <MenuItem Header="Копировать" Command="ApplicationCommands.Copy" />

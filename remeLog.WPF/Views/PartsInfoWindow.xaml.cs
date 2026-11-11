@@ -915,6 +915,13 @@ namespace remeLog.Views
             }
         }
 
+        /// <summary> Принять предложение ИИ-проверки: сменить причину строки на предложенную. </summary>
+        private void OnApplyAiCheckSuggestionClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem { Parent: ContextMenu { PlacementTarget: FrameworkElement { DataContext: Part part } } })
+                part.ApplyAiCheckSuggestion();
+        }
+
         private void OnVariantClick(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuItem item) return;

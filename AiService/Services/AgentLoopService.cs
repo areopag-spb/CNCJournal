@@ -49,8 +49,6 @@ public class AgentLoopService(
             _ => "off",
         };
 
-    public bool Thinking => config.GetValue("Agent:Thinking", false);
-
     /// <summary>
     /// Второе мнение (Agent:VerifyFalse, дефолт false): если базовый вердикт False,
     /// два дешёвых верифаера (без thinking, T=VerifyTemperature) независимо решают
@@ -73,6 +71,35 @@ public class AgentLoopService(
     public bool RetryOnFailure => config.GetValue("Agent:RetryOnFailure", true);
     public TimeSpan RetryDelay => TimeSpan.FromMilliseconds(
         Math.Clamp(config.GetValue("Agent:RetryDelayMs", 2000), 0, 30000));
+
+    /// <summary>
+    /// Смысл причин — сразу в сообщении (Agent:InlineReasonSemantics, дефолт false): для причин,
+    /// по которым раньше приходилось «толкать» модель к get_reason_semantics (ContextNudgeReasons),
+    /// текст справочника прикладывается к данным дня. За ноябрь 2026 модель сама вызвала tool
+    /// 30 раз на 1850 анализов; толчок стоил двух лишних раундов. Включать после повтора (replay).
+    /// </summary>
+    public bool InlineReasonSemantics => config.GetValue("Agent:InlineReasonSemantics", false);
+
+    /// <summary>
+    /// Не звать модель, когда судить нечего (Agent:SkipModelWhenNothingToJudge, дефолт false):
+    /// записей нет, сигналов дня нет, по отчёту мастера всё предрешено системой (см. NothingToJudge).
+    /// </summary>
+    public bool SkipModelWhenNothingToJudge => config.GetValue("Agent:SkipModelWhenNothingToJudge", false);
+
+    /// <summary> Вердикт «замечаний нет» без модели: дальше его разбирает общий downstream контроллера. </summary>
+    public const string NothingToJudgeJson =
+        """{"requires_review":false,"confidence":1.0,"signals":[],"downgraded_signals":[],"suggest_exclude_from_reports":[],"shift_report_issues":[],"explanation":"","suggested_reason":""}""";
+
+    /// <summary>
+    /// Модели нечего судить: записей за сутки нет (tools в таком дне и так отключены), сигналов
+    /// дня нет, а каждая смена отчёта мастера предрешена системой (блоки таких смен в промпт
+    /// не попадают вовсе). Любая находка модели в таком дне — выдумка; hard-правила отчёта
+    /// эскалируют сами, мимо модели.
+    /// </summary>
+    public static bool NothingToJudge(AnalyzeRequest request, ShiftReportRuleResult shiftRules) =>
+        request.Parts.Count == 0
+        && request.Signals.Count == 0
+        && ShiftReportRuleEvaluator.AgentPreverdicts(request, shiftRules).All(p => !p.NeedsModel);
 
     public async Task<AgentLoopOutcome> AnalyzeAsync(
         AnalyzeRequest request,
@@ -131,6 +158,22 @@ public class AgentLoopService(
         }
 
         var trace = new AgentTrace { PromptVersion = prompt.Version };
+
+        if (SkipModelWhenNothingToJudge && NothingToJudge(request, shiftRules))
+        {
+            trace.ModelSkipped = true;
+            trace.BaseRequiresReview = false;
+            progress?.Report("✓ Записей нет, отчёт мастера решён правилами — модель не нужна.");
+            logger.LogInformation("Агент {Machine} {Date}: судить нечего, модель не вызывалась",
+                request.Machine, request.ShiftDate);
+            return new AgentLoopOutcome(NothingToJudgeJson, trace);
+        }
+
+        var inlineReasons = InlineReasonSemantics
+            ? ContextNudgeReasons(request, hardRules, shiftRules)
+            : [];
+        trace.ReasonsInlined = inlineReasons.Count;
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(Timeout);
 
@@ -143,7 +186,7 @@ public class AgentLoopService(
         var messages = new List<ChatMessage>
         {
             new() { Role = "system", Content = system },
-            new() { Role = "user", Content = AgentUserMessage(request, hardRules, shiftRules) },
+            new() { Role = "user", Content = AgentUserMessage(request, hardRules, shiftRules, inlineReasons) },
         };
 
         try
@@ -178,7 +221,9 @@ public class AgentLoopService(
 
                     // Вердикт без запроса смысла причин там, где он решает дело: один раз
                     // просим запросить (qwen3:14b сам не вызывал tools ни разу за 367 суток).
-                    if (!trace.ContextNudged && trace.Rounds.Count == 0 && i < MaxIterations)
+                    // Смысл причин уже приложен к сообщению — толкать не к чему.
+                    if (inlineReasons.Count == 0
+                        && !trace.ContextNudged && trace.Rounds.Count == 0 && i < MaxIterations)
                     {
                         var needed = ContextNudgeReasons(request, hardRules, shiftRules);
                         if (needed.Count > 0)
@@ -505,8 +550,26 @@ public class AgentLoopService(
     /// при наличии заказа» для Без М/Л-строки). Ключевое вычисляет C#,
     /// схема описана в скелете (═══ ДАННЫЕ ═══).
     /// </summary>
-    private static string AgentUserMessage(
-        AnalyzeRequest request, HardRuleResult hardRules, ShiftReportRuleResult shiftRules)
+    /// <summary>
+    /// Блок «смысл причин» для сообщения: те же тексты, что отдаёт get_reason_semantics,
+    /// по одному на пару (причина, категория). Пусто — блока нет.
+    /// </summary>
+    public static string RenderReasonSemantics(
+        AnalyzeRequest request, IReadOnlyList<(string Reason, string Category)> reasons)
+    {
+        if (reasons.Count == 0) return "";
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Смысл причин отклонения (ответы get_reason_semantics уже получены системой — "
+            + "по этим причинам инструмент повторно не вызывай):");
+        foreach (var (reason, category) in reasons)
+            sb.AppendLine($" • {(category == "setup" ? "наладка" : "изготовление")}: "
+                + AgentTools.ReasonSemantics(request, reason, category));
+        return sb.ToString();
+    }
+
+    internal static string AgentUserMessage(
+        AnalyzeRequest request, HardRuleResult hardRules, ShiftReportRuleResult shiftRules,
+        IReadOnlyList<(string Reason, string Category)>? inlineReasons = null)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Станок: {request.Machine}" +
@@ -517,6 +580,7 @@ public class AgentLoopService(
         foreach (var s in request.Signals)
             sb.AppendLine($"Сигнал дня: {s}");
         sb.AppendLine(request.Parts.Count == 0 ? PromptBuilder.NoPartsNotice : RenderPartsJson(request));
+        sb.Append(RenderReasonSemantics(request, inlineReasons ?? []));
 
         if (hardRules.HardSignals.Count > 0)
         {

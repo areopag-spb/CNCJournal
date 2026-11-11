@@ -26,6 +26,8 @@ public static class AnalysisVersion
             configuration.GetValue("Agent:Thinking", "auto"),
             configuration.GetValue("Agent:MaxIterations", 4),
             configuration.GetValue("Agent:VerifyFalse", false),
+            configuration.GetValue("Agent:InlineReasonSemantics", false),
+            configuration.GetValue("Agent:SkipModelWhenNothingToJudge", false),
             configuration.GetValue<string>("Ollama:Model"));
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{buildId}\n{promptsFingerprint}\n{settings}"));
         return Convert.ToHexString(bytes)[..12].ToLowerInvariant();

@@ -3,6 +3,8 @@
 // Использование:
 //   dotnet run --project tools/AgentReplay -- --logs C:\AiService\request_logs\2026-09 \
 //     --out %TEMP%\agent-replay.json --limit 10 --model qwen3:14b
+// Доп. ключи: --inline-reasons on, --skip-empty on (режимы Agent:InlineReasonSemantics и
+// Agent:SkipModelWhenNothingToJudge); --dry — без Ollama, только подсчёт по логам, где они сработают.
 // На каждый файл: запрос → HardRule/ShiftReport (как в проде) → AgentLoopService →
 // разбор финала → строка результата (agent vs prod-вердикт из того же файла).
 // Сверка с Decision аналитика — отдельным SQL по machine/shiftDate (см. ai_day_reviews).
@@ -24,6 +26,8 @@ var config = new ConfigurationBuilder()
         ["Agent:TimeoutSeconds"] = opts.Timeout.ToString(),
         ["Agent:Temperature"] = opts.Temperature,
         ["Agent:Thinking"] = opts.Thinking.ToString(),
+        ["Agent:InlineReasonSemantics"] = opts.InlineReasons ? "true" : "false",
+        ["Agent:SkipModelWhenNothingToJudge"] = opts.SkipEmpty ? "true" : "false",
         ["Ollama:BaseUrl"] = opts.Ollama,
         ["Ollama:Model"] = opts.Model,
     })
@@ -47,6 +51,74 @@ var files = Directory.GetFiles(opts.Logs, "*.json")
     .ToList();
 
 Console.WriteLine($"Файлов: {files.Count}, модель: {opts.Model}, итераций: {opts.MaxIter}, таймаут: {opts.Timeout}с");
+
+// --dry: без Ollama. По логам считает, где сработали бы Agent:SkipModelWhenNothingToJudge и
+// Agent:InlineReasonSemantics, и что в этих сутках решил прод (чтобы оценить риск до включения).
+if (opts.Dry)
+{
+    int total = 0, skip = 0, skipProdRR = 0, skipModelRR = 0, skipModelSaid = 0, inline = 0, inlineReasons = 0, inlineNudged = 0, inlineTools = 0;
+    var skipDiffs = new List<string>();
+    foreach (var file in files)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(file));
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("request", out var reqEl) || !root.TryGetProperty("response", out var prod)
+                || prod.ValueKind != JsonValueKind.Object)
+                continue;
+            var req = reqEl.Deserialize<AnalyzeRequest>(jsonOpts)!;
+            var hard = HardRuleEvaluator.Evaluate(req);
+            var shift = ShiftReportRuleEvaluator.Evaluate(req);
+            var trace = root.TryGetProperty("agentTrace", out var tr) && tr.ValueKind == JsonValueKind.Object ? tr : default;
+            bool TraceFlag(string name) => trace.ValueKind == JsonValueKind.Object
+                && trace.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+            int TraceCount(string name) => trace.ValueKind == JsonValueKind.Object
+                && trace.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array ? v.GetArrayLength() : 0;
+            var prodRR = prod.TryGetProperty("requiresReview", out var prr) && prr.ValueKind == JsonValueKind.True;
+            total++;
+
+            if (AgentLoopService.NothingToJudge(req, shift))
+            {
+                skip++;
+                if (prodRR) skipProdRR++;
+                var baseRR = TraceFlag("baseRequiresReview");
+                var baseSignals = TraceCount("baseSignals");
+                var shiftIssues = prod.TryGetProperty("shiftReportIssues", out var si) && si.ValueKind == JsonValueKind.Array
+                    ? si.GetArrayLength() : 0;
+                if (baseRR) skipModelRR++;
+                // Модель что-то «нашла» там, где судить нечего: итог прода расходится с правилами.
+                if (prodRR != shift.MustEscalate || baseRR || baseSignals > 0)
+                {
+                    skipModelSaid++;
+                    if (skipDiffs.Count < 40)
+                        skipDiffs.Add($"{Path.GetFileName(file)}: prodRR={prodRR} shiftHard={shift.MustEscalate} baseRR={baseRR} baseSignals={baseSignals} shiftIssues={shiftIssues}");
+                }
+            }
+
+            var reasons = AgentLoopService.ContextNudgeReasons(req, hard, shift);
+            if (reasons.Count > 0)
+            {
+                inline++;
+                inlineReasons += reasons.Count;
+                if (TraceFlag("contextNudged")) inlineNudged++;
+                if (TraceCount("rounds") > 0) inlineTools++;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"{Path.GetFileName(file)}: ОШИБКА {ex.Message}");
+        }
+    }
+    Console.WriteLine($"Анализов: {total}");
+    Console.WriteLine($"Пропуск модели (судить нечего): {skip} ({Pct(skip, total)}); из них прод эскалировал {skipProdRR}, модель сама просила разбор {skipModelRR}");
+    Console.WriteLine($"  расхождение «модель что-то сказала / итог не равен правилам»: {skipModelSaid}");
+    foreach (var d in skipDiffs) Console.WriteLine("   " + d);
+    Console.WriteLine($"Смысл причин в сообщении: {inline} суток ({Pct(inline, total)}), причин {inlineReasons}; в проде из них с толчком {inlineNudged}, с вызовом tools {inlineTools}");
+    return;
+}
+
+static string Pct(int part, int whole) => whole == 0 ? "0%" : $"{100.0 * part / whole:F1}%";
 
 var results = new List<object>();
 foreach (var file in files)
@@ -175,7 +247,10 @@ static ReplayOpts ParseArgs(string[] args)
         Get("--match", ""),
         Get("--temp", "0.0"),
         Get("--think", "off"),
-        Get("--serial", ""));
+        Get("--serial", ""),
+        Get("--inline-reasons", "off").Equals("on", StringComparison.OrdinalIgnoreCase),
+        Get("--skip-empty", "off").Equals("on", StringComparison.OrdinalIgnoreCase),
+        args.Contains("--dry"));
 }
 
-sealed record ReplayOpts(string Logs, string Out, int Limit, string Model, string Ollama, int MaxIter, int Timeout, string Match, string Temperature, string Thinking, string Serial);
+sealed record ReplayOpts(string Logs, string Out, int Limit, string Model, string Ollama, int MaxIter, int Timeout, string Match, string Temperature, string Thinking, string Serial, bool InlineReasons, bool SkipEmpty, bool Dry);

@@ -34,28 +34,146 @@ public static partial class MasterCheckGuards
     /// пустой паттерн; иначе null (решает модель). Порядок детерминирован:
     /// аномалии — по списку запроса, внутри пары — точные совпадения раньше стема.
     /// </summary>
-    public static string? CheckKnownFalsePattern(PartContext part, List<VerifyAnomaly> anomalies)
+    public static string? CheckKnownFalsePattern(PartContext part, List<VerifyAnomaly> anomalies) =>
+        Check(part, anomalies)?.Remark;
+
+    /// <summary>
+    /// Срабатывание гарда: замечание и, если причина выбрана неверно, предложение замены
+    /// (причина из справочника + поле причины, к которому она относится).
+    /// </summary>
+    public sealed record GuardHit(string Remark, string? SuggestedReason = null, string? SuggestedField = null);
+
+    public const string MissingNormativesReason = "Отсутствие нормативов";
+    public const string IncorrectNormativesReason = "Некорректные нормативы";
+    public const string ProcessDeviationReason = "Изготовление не по техпроцессу";
+
+    /// <summary>
+    /// «Нет норм» в изготовлении — следствие, а не причина. В техпроцессе норматив изготовления
+    /// есть всегда; в записи его нет, потому что оператор поставил прочерк. По инструкции
+    /// оператора единственное основание для прочерка — несовпадение операции, станка (типа/группы)
+    /// или числа установок с технологической картой, а это причина «Изготовление не по
+    /// техпроцессу» (регламент, п. 4.3). От мастера нужна причина, по которой норматив не проставлен.
+    /// </summary>
+    public const string MachiningNoNormRemark =
+        "«нет норм» — следствие, а не причина: укажите, почему оператор не проставил норматив. "
+        + "По инструкции прочерк ставят только при несовпадении операции, станка или числа установок "
+        + "с техкартой — это «Изготовление не по техпроцессу» с указанием, что именно не совпадает";
+
+    /// <summary>
+    /// Причина про нормативы выбрана, а комментарий к ней называет отклонение от техпроцесса.
+    /// Регламент, п. 4.3: «Отсутствие/Некорректные нормативы» — только при правильном техпроцессе;
+    /// «если деталь выполняется не по техпроцессу, то для этого есть своя причина в списке».
+    /// </summary>
+    public const string DeviationUnderNormativeReasonRemark =
+        "в комментарии названо отклонение от техпроцесса — по регламенту причина тогда "
+        + "«Изготовление не по техпроцессу», а причины про нормативы выбирают только при правильном техпроцессе";
+
+    /// <summary>
+    /// Проверка ДО автоодобрения самодостаточных причин: «Отсутствие/Некорректные нормативы»
+    /// с комментарием, который сам называет отклонение от техпроцесса (VMC40C 08.11.2026:
+    /// «Отсутствие нормативов» + «деталь с универсального участка»).
+    /// </summary>
+    public static GuardHit? CheckNormativeReasonContradiction(PartContext part, List<VerifyAnomaly> anomalies)
+    {
+        foreach (var a in anomalies)
+        {
+            var (reason, detail, reasonField) = a.Field switch
+            {
+                nameof(PartContext.MasterSetupDetail) =>
+                    (part.MasterSetupComment, part.MasterSetupDetail, nameof(PartContext.MasterSetupComment)),
+                nameof(PartContext.MasterMachiningDetail) =>
+                    (part.MasterMachiningComment, part.MasterMachiningDetail, nameof(PartContext.MasterMachiningComment)),
+                _ => ((string?)null, (string?)null, ""),
+            };
+            if (IsNormativeReason(reason) && NamesDeviation(detail))
+                return new GuardHit(DeviationUnderNormativeReasonRemark, ProcessDeviationReason, reasonField);
+        }
+        return null;
+    }
+
+    private static bool IsNormativeReason(string? reason)
+    {
+        var r = reason?.Trim();
+        return string.Equals(r, MissingNormativesReason, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(r, IncorrectNormativesReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary> То же, что <see cref="CheckKnownFalsePattern"/>, но с предложением замены причины. </summary>
+    public static GuardHit? Check(PartContext part, List<VerifyAnomaly> anomalies)
     {
         foreach (var a in anomalies)
         {
             if (IsEmptyRequiredInput(part, a.Field) is { } emptyRemark)
-                return emptyRemark;
+                return new GuardHit(emptyRemark);
 
-            var (reason, detail) = a.Field switch
+            var (reason, detail, reasonField) = a.Field switch
             {
-                nameof(PartContext.MasterSetupDetail) => (part.MasterSetupComment, part.MasterSetupDetail),
-                nameof(PartContext.MasterMachiningDetail) => (part.MasterMachiningComment, part.MasterMachiningDetail),
-                _ => ((string?)null, (string?)null),
+                nameof(PartContext.MasterSetupDetail) =>
+                    (part.MasterSetupComment, part.MasterSetupDetail, nameof(PartContext.MasterSetupComment)),
+                nameof(PartContext.MasterMachiningDetail) =>
+                    (part.MasterMachiningComment, part.MasterMachiningDetail, nameof(PartContext.MasterMachiningComment)),
+                _ => ((string?)null, (string?)null, ""),
             };
             if (reason is null || detail is null)
                 continue;
             if (IsCryptogram(detail) is { } cryptogramRemark)
-                return cryptogramRemark;
+                return new GuardHit(cryptogramRemark);
             if (IsNormativeTextAtDrugoe(reason, detail) is { } normativeRemark)
-                return normativeRemark;
+            {
+                var suggested = SuggestNormativeReason(detail);
+                if (suggested == IncorrectNormativesReason)
+                    return new GuardHit(normativeRemark, suggested, reasonField);
+                // Мастер сам назвал в строке отклонение от техпроцесса («деталь с универсального
+                // участка») — это и есть причина, по которой норматив не проставлен.
+                if (RowNamesProcessDeviation(part))
+                    return new GuardHit(
+                        a.Field == nameof(PartContext.MasterMachiningDetail) ? MachiningNoNormRemark : DeviationUnderNormativeReasonRemark,
+                        ProcessDeviationReason, reasonField);
+                // Наладка: норматив может действительно отсутствовать — есть своя причина.
+                // Изготовление: такой причины нет, «нет норм» ничего не объясняет.
+                return a.Field == nameof(PartContext.MasterMachiningDetail)
+                    ? new GuardHit(MachiningNoNormRemark)
+                    : new GuardHit(normativeRemark, suggested, reasonField);
+            }
         }
         return null;
     }
+
+    /// <summary>
+    /// Мастер сам назвал в строке отклонение от техпроцесса: выбрал эту причину в одной из
+    /// категорий либо написал типовую формулировку («деталь с универсального/ручного участка»,
+    /// «с других станков», «заложена … операция/установка»).
+    /// </summary>
+    public static bool RowNamesProcessDeviation(PartContext part) =>
+        IsProcessDeviationReason(part.MasterSetupComment)
+        || IsProcessDeviationReason(part.MasterMachiningComment)
+        || NamesDeviation(part.MasterSetupDetail)
+        || NamesDeviation(part.MasterMachiningDetail)
+        || NamesDeviation(part.MasterComment);
+
+    private static bool IsProcessDeviationReason(string? reason) =>
+        string.Equals(reason?.Trim(), ProcessDeviationReason, StringComparison.OrdinalIgnoreCase);
+
+    private static bool NamesDeviation(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && ProcessDeviationPhrase().IsMatch(text);
+
+    [GeneratedRegex(@"(?:универсальн\w*|ручн\w*)\s+участ|с\s+друг\w+\s+станк|заложен\w*\s+\S", RegexOptions.IgnoreCase)]
+    private static partial Regex ProcessDeviationPhrase();
+
+    /// <summary>
+    /// Какая из двух причин про нормативы подходит тексту: «некорректные/неверные/заниженные…» —
+    /// «Некорректные нормативы», иначе («нет норм», «норматива нет») — «Отсутствие нормативов».
+    /// </summary>
+    public static string SuggestNormativeReason(string detail)
+    {
+        var text = NormalizeExact(detail);
+        return IncorrectMarkers.Any(m => text.Contains(m, StringComparison.Ordinal))
+            ? IncorrectNormativesReason
+            : MissingNormativesReason;
+    }
+
+    private static readonly string[] IncorrectMarkers =
+        ["некоррект", "неверн", "неправильн", "занижен", "завышен", "ошибочн"];
 
     /// <summary>
     /// Причина и комментарий мастера по полю аномалии пусты целиком (для простоев — пуст комментарий).

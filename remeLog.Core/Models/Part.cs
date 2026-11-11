@@ -1680,6 +1680,53 @@ namespace remeLog.Models
             set => Set(ref _AiCheckRemark, value);
         }
 
+        private string _AiCheckSuggestedReason = string.Empty;
+        /// <summary>
+        /// Причина из справочника, на которую ИИ-проверка предлагает сменить выбранную
+        /// (пусто — предложения нет). Только в памяти, NeedUpdate не трогает: строка меняется,
+        /// лишь когда пользователь сам примет предложение.
+        /// </summary>
+        public string AiCheckSuggestedReason
+        {
+            get => _AiCheckSuggestedReason;
+            set => Set(ref _AiCheckSuggestedReason, value);
+        }
+
+        /// <summary> Поле причины для <see cref="AiCheckSuggestedReason"/>: MasterSetupComment или MasterMachiningComment. </summary>
+        public string AiCheckSuggestedField { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Запоминает предложение замены причины, только если такая причина есть в справочнике
+        /// своей категории и ещё не выбрана; иначе предложение сбрасывается.
+        /// </summary>
+        public void SetAiCheckSuggestion(string? reason, string? field)
+        {
+            var r = reason?.Trim() ?? string.Empty;
+            var known = r.Length > 0 && field switch
+            {
+                nameof(MasterSetupComment) => SetupReasonsRequireComment.ContainsKey(r)
+                    && !string.Equals(MasterSetupComment?.Trim(), r, StringComparison.OrdinalIgnoreCase),
+                nameof(MasterMachiningComment) => MachiningReasonsRequireComment.ContainsKey(r)
+                    && !string.Equals(MasterMachiningComment?.Trim(), r, StringComparison.OrdinalIgnoreCase),
+                _ => false,
+            };
+            AiCheckSuggestedField = known ? field! : string.Empty;
+            AiCheckSuggestedReason = known ? r : string.Empty;
+        }
+
+        /// <summary> Применяет предложенную причину к своему полю. false — предложения нет. </summary>
+        public bool ApplyAiCheckSuggestion()
+        {
+            var reason = AiCheckSuggestedReason;
+            var field = AiCheckSuggestedField;
+            if (string.IsNullOrEmpty(reason)) return false;
+            SetAiCheckSuggestion(null, null);
+            if (field == nameof(MasterSetupComment)) MasterSetupComment = reason;
+            else if (field == nameof(MasterMachiningComment)) MasterMachiningComment = reason;
+            else return false;
+            return true;
+        }
+
 
         public double SingleProductionTime => FinishedCountFact > 0 ? ProductionTimeFact / FinishedCountFact : 0;
 
